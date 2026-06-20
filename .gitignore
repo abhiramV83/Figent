@@ -4,3 +4,4 @@ __pycache__/
 .env
 temp_repos/
 *.egg-info/
+.gitignore
