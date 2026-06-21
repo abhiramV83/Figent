@@ -73,7 +73,7 @@ class RepoHandler:
                 except Exception as e:
                     print(f"Could not read {path}: {e}")
                     continue
-
+        # print(files)
         print(f"Found {len(files)} code files")
         return files
 
