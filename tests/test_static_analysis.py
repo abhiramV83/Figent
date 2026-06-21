@@ -14,7 +14,6 @@ python_files = [f for f in files if f["language"] == "py"][:5]
 for f in python_files:
     full_path = os.path.join(repo_path, f["path"])
     results = analyze_file(full_path, f["language"])
-    print(results)
     total_findings = len(results["bandit_findings"]) + len(results["radon_findings"])
     if total_findings > 0:
         print(f"\n{f['path']} — {total_findings} findings")
