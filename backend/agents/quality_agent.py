@@ -1,35 +1,48 @@
 import json
 from backend.llm_config import get_llm
-from backend.state import ReviewState, Finding
+from backend.state import ReviewState
+from backend.utils import clean_llm_response, safe_llm_call
 
-QUALITY_PROMPT = """You are a senior code reviewer analyzing a Python file for code quality issues.
+QUALITY_PROMPT = """You are a senior code reviewer analyzing a file for code quality issues.
 
 Static analysis tool found these complexity issues:
 {radon_findings}
 
 File: {file_path}
+Language: {language}
 Code:
 {code_content}
 
 Based on the static analysis findings AND your own reading of the code, identify quality issues.
-For each issue, respond with this exact JSON structure (a list of objects):
+
+Common things to look for:
+- Functions that are too long or doing too many things
+- Poor naming that makes code hard to understand
+- Missing or inadequate error handling
+- Code duplication that should be abstracted
+- Deeply nested logic that should be simplified
+- Dead code or unused variables
+
+For each issue respond with this exact JSON structure:
 
 [
   {{
     "line": <line number>,
     "issue": "<clear description of the problem>",
     "severity": "critical" | "high" | "medium" | "low",
-    "fix": "<concrete suggested fix>",
-    "confidence": <0-100, how confident you are this is a real issue>
+    "fix": "<concrete fix in plain English>",
+    "confidence": <0-100>
   }}
 ]
 
 IMPORTANT RULES:
-- In the "issue" and "fix" fields, do NOT use backticks, code snippets, or nested quotes.
-- Describe everything in plain English. Example: instead of "use `nodes.reference()`", 
-  write "use the nodes.reference function".
-- Only return the JSON list, nothing else — no explanation, no markdown fences, no preamble.
+- Do NOT use backticks, nested quotes, or code snippets in "issue" or "fix" fields.
+- Describe everything in plain English.
+- Only return the JSON list, nothing else — no markdown fences, no preamble.
 - If no issues found, return an empty list [].
+- Return a MAXIMUM of 5 findings per file. Pick the most important ones only.
+- Keep each "issue" field under 150 characters.
+- Keep each "fix" field under 150 characters. Be concise.
 """
 
 def quality_agent_node(state: ReviewState) -> ReviewState:
@@ -38,29 +51,19 @@ def quality_agent_node(state: ReviewState) -> ReviewState:
     all_findings = []
 
     for file in state["files"]:
-        if file["language"] != "py":
-            continue  # quality agent focuses on python for now
-
         radon_findings = file.get("tool_results", {}).get("radon_findings", [])
 
         prompt = QUALITY_PROMPT.format(
             radon_findings=json.dumps(radon_findings),
             file_path=file["path"],
+            language=file["language"],
             code_content=file["content"][:3000]
         )
 
-        content = ""  # define upfront so it's available in except block too
+        content = ""
         try:
-            response = llm.invoke(prompt)
-            content = response.content.strip()
-
-            # Strip markdown fences if present
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-                content = content.strip()
-
+            raw_content = safe_llm_call(llm, prompt)
+            content = clean_llm_response(raw_content)
             findings = json.loads(content)
 
             for f in findings:
@@ -69,7 +72,7 @@ def quality_agent_node(state: ReviewState) -> ReviewState:
                 all_findings.append(f)
 
         except json.JSONDecodeError as e:
-            print(f"Could not parse LLM response for {file['path']}: {e}")
+            print(f"Could not parse quality agent response for {file['path']}: {e}")
             print(f"Raw content preview: {content[:200]}")
             continue
         except Exception as e:

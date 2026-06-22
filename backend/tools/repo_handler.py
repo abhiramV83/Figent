@@ -5,7 +5,7 @@ from git import Repo
 from pathlib import Path
 from typing import List, Dict
 
-SKIP_DIRS = ["venv", "__pycache__", ".git",
+SKIP_DIRS = ["venv", "__pycache__", ".git","tests",
              "node_modules", ".env", "dist", "build"]
 MAX_FILE_SIZE_KB = 100
 
@@ -42,11 +42,13 @@ class RepoHandler:
     def get_code_files(self, repo_path: str) -> List[Dict]:
         """Extract all supported code files with their content and language"""
         files = []
-
         for ext in SUPPORTED_EXTENSIONS:
             for path in Path(repo_path).rglob(f"*{ext}"):
                 # Skip unwanted directories
                 if any(skip in path.parts for skip in SKIP_DIRS):
+                    continue
+                # Skip test files by name
+                if path.name.startswith("test_") or path.name.startswith("conftest"):
                     continue
 
                 # Skip files that are too large
