@@ -1,3 +1,50 @@
+## System Architecture — Big Picture Flow
+
+User submits repo URL
+        ↓
+Orchestrator Node
+- Clones repo via RepoHandler
+- Extracts all code files (py, js, ts, java, go)
+- Runs static analysis tools on each file (bandit + radon)
+- Attaches tool_results to each file dict
+- Writes everything into state["files"]
+        ↓
+Quality Agent
+- Reads state["files"]
+- Sends file content + radon findings to LLM
+- Writes → state["quality_findings"]
+        ↓
+Security Agent
+- Reads state["files"]
+- Sends file content + bandit findings to LLM
+- Works on ALL languages
+- Writes → state["security_findings"]
+        ↓
+Performance Agent
+- Reads state["files"]
+- Sends file content + radon findings to LLM
+- Writes → state["performance_findings"]
+        ↓
+Synthesizer Agent
+- Reads all 3 finding lists
+- Deduplicates, ranks by severity, scores confidence
+- Decides which findings get PRs opened (threshold: 85%)
+- Writes → state["all_findings"] + state["final_report"]
+        ↓
+GitHub PR Node
+- Reads high-confidence findings
+- Opens real PRs with fixes applied
+- Writes → state["pr_urls"]
+        ↓
+Chat Agent
+- Loads full review context from DB
+- Answers user questions about findings, fixes, PRs
+        ↓
+Final Output
+- Complete report with findings, severities, fixes, PR links
+- Stored in PostgreSQL for history tracking
+
+
 # Figent — Engineering Decisions Log
 
 ---
