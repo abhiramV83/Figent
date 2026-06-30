@@ -218,3 +218,53 @@ Fix: Added safe_llm_call() with exponential backoff retry.
 Orchestrator attaches tool_results to each file dict before agents run.
 Each file dict becomes self-contained — path + content + language +
 tool findings all in one place.
+
+Day 6 — LangGraph Orchestration
+
+Decision: Orchestrator wrapped in try/except — if repo cloning fails 
+(bad URL, private repo, network issue), error is written to state 
+instead of crashing the whole graph. Agents downstream handle empty 
+file lists gracefully.
+
+Decision: Agents run sequentially (orchestrator → quality → security → 
+performance) rather than in parallel for v1. LangGraph supports parallel 
+node execution, but sequential is simpler to debug and reason about 
+findings ordering. Parallel execution is a noted v2 performance 
+improvement once the sequential version is fully stable.
+
+Testing constraint: Limited to first 10 files during development to 
+avoid rate limits and long test cycles. Will be reconsidered for 
+production — likely scoped to changed files in a PR rather than 
+the entire repo, to keep review time reasonable at scale.
+
+Milestone: First successful end-to-end graph run — repo URL in, 
+structured findings from all 3 agents out, fully automated. This 
+replaces all manual state-building from Day 4-5 test files.
+
+
+
+SHAPE OF RESULT 
+
+result = {
+    "repo_url": "https://github.com/octocat/Hello-World",   # unchanged from input
+    "repo_path": "./temp_repos/Hello-World",                 # set by orchestrator
+    "files": [                                                # set by orchestrator
+        {
+            "path": "README",
+            "content": "...",
+            "language": "py",  # or whatever
+            "size_kb": 0.1,
+            "tool_results": {"bandit_findings": [], "radon_findings": []}
+        },
+        ...
+    ],
+    "quality_findings": [                                     # set by quality agent
+        {"line": 5, "issue": "...", "severity": "medium", "fix": "...", "confidence": 80, "file": "...", "agent": "quality"}
+    ],
+    "security_findings": [...],                                # set by security agent
+    "performance_findings": [...],                             # set by performance agent
+    "all_findings": [],                                        # still empty — synthesizer not built yet
+    "final_report": {},                                        # still empty — synthesizer not built yet
+    "pr_urls": [],                                              # still empty — GitHub PR node not built yet
+    "error": None                                               # None if everything succeeded, error string if not
+}
