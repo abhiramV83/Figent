@@ -20,6 +20,7 @@ def orchestrator_node(state: ReviewState) -> ReviewState:
 
         state["files"] = files
         state["error"] = None
+        state["repo_path"] = repo_path
 
         print(f"Orchestrator complete — {len(files)} files ready for analysis")
 

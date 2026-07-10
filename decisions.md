@@ -1,270 +1,776 @@
-## System Architecture — Big Picture Flow
+# Figent — System Architecture & Engineering Decisions
 
+---
+
+# System Architecture — Big Picture Flow
+
+```text
 User submits repo URL
         ↓
 Orchestrator Node
 - Clones repo via RepoHandler
-- Extracts all code files (py, js, ts, java, go)
-- Runs static analysis tools on each file (bandit + radon)
-- Attaches tool_results to each file dict
+- Extracts all code files (.py, .js, .ts, .java, .go)
+- Runs static analysis tools on each file (Bandit + Radon)
+- Attaches tool_results to each file
 - Writes everything into state["files"]
+
         ↓
+
 Quality Agent
 - Reads state["files"]
-- Sends file content + radon findings to LLM
+- Sends file content + Radon findings to the LLM
 - Writes → state["quality_findings"]
+
         ↓
+
 Security Agent
 - Reads state["files"]
-- Sends file content + bandit findings to LLM
-- Works on ALL languages
+- Sends file content + Bandit findings to the LLM
+- Works for all supported languages
 - Writes → state["security_findings"]
+
         ↓
+
 Performance Agent
 - Reads state["files"]
-- Sends file content + radon findings to LLM
+- Sends file content + Radon findings to the LLM
 - Writes → state["performance_findings"]
+
         ↓
+
 Synthesizer Agent
-- Reads all 3 finding lists
-- Deduplicates, ranks by severity, scores confidence
-- Decides which findings get PRs opened (threshold: 85%)
-- Writes → state["all_findings"] + state["final_report"]
+- Reads findings from all three agents
+- Deduplicates overlapping issues
+- Ranks findings by severity
+- Scores confidence
+- Decides PR eligibility (confidence ≥ 85%)
+- Writes:
+    state["all_findings"]
+    state["final_report"]
+
         ↓
+
 GitHub PR Node
-- Reads high-confidence findings
-- Opens real PRs with fixes applied
+- Reads PR-eligible findings
+- Applies fixes
+- Opens pull requests
 - Writes → state["pr_urls"]
+
         ↓
+
 Chat Agent
-- Loads full review context from DB
-- Answers user questions about findings, fixes, PRs
+- Loads review history from PostgreSQL
+- Answers user questions about:
+    • findings
+    • fixes
+    • pull requests
+
         ↓
+
 Final Output
-- Complete report with findings, severities, fixes, PR links
-- Stored in PostgreSQL for history tracking
-
-
-# Figent — Engineering Decisions Log
-
----
-
-## Day 1 — LangGraph Fundamentals
-
-**Concept locked in:** LangGraph = nodes process state, edges define flow,
-state is shared memory across all agents. Every node reads state, does
-work, writes back to state, returns it.
-
-No project code written today — pure understanding via LangGraph docs +
-a dummy 4-node graph (fetch_repo → quality_agent → security_agent →
-synthesizer) to internalize the pattern before touching the real project.
+- Complete review report
+- Severity summary
+- PR links
+- Stored in PostgreSQL
+```
 
 ---
 
-## Day 2 — Project Setup + RepoHandler
+# Day 1 — LangGraph Fundamentals
 
-**Decision:** State defined upfront as a strict `TypedDict` (`ReviewState`)
-— forces every agent to follow a fixed contract. Prevents agents from
-silently writing unexpected keys into shared state.
+## Concept Locked In
 
-**Decision:** Files over 100KB are skipped during repo extraction. LLM
-context windows have limits — large files would blow up token usage
-for one file at the cost of analyzing the rest of the repo.
+LangGraph consists of:
 
-**Decision:** Repo is cleaned up (deleted from disk) after analysis
-completes. Storing cloned repos permanently wastes storage — at scale,
-100 reviews would mean 100 repos sitting on disk unnecessarily.
+* Nodes that process state
+* Edges that define execution flow
+* Shared state accessible by every node
 
-**Problem hit:** Windows sets `.git` folder files as read-only, so
-`shutil.rmtree()` failed with `PermissionError` on cleanup/re-clone.
-**Fix:** Added a `_force_remove` handler passed via `onexc=` to
-`shutil.rmtree()` — it chmods the file to writable then retries deletion.
-Windows-specific fix, has no effect on Linux/Mac deployment.
+Each node follows the pattern:
 
-**Decision:** Extended file support beyond Python — originally scoped to
-`.py` only, expanded to `.py, .js, .ts, .java, .go`. Reasoning: LLM-based
-agents can analyze any language as raw text since they just read code as
-text. Only the static analysis tools (bandit, radon) remain Python-specific
-since they're Python tooling. This is a deliberate v1 scope decision, not
-an oversight — documented clearly for interviews and README.
+1. Read state
+2. Perform work
+3. Update state
+4. Return state
 
----
+No production code was written.
 
-## Day 3 — Static Analysis Tools (bandit + radon)
+The focus was understanding LangGraph through documentation and a small four-node demo graph:
 
-**Decision:** Used `subprocess` + JSON output mode (`-f json` for bandit,
-`-j` for radon) instead of importing them as Python libraries directly.
-Reasoning: CLI JSON output is stable and well-documented across versions;
-internal Python APIs for these tools change more often between releases.
-
-**Decision:** radon complexity threshold set at `> 8` to flag a function.
-8–15 = medium severity, above 15 = high severity. Based on radon's own
-complexity rating scale. Filtering at this threshold avoids noise from
-flagging every trivial function with complexity 1–2.
-
-**Decision:** Static analysis tools only run on `.py` files — for any
-other language, `analyze_file()` returns empty findings immediately.
-These files rely purely on LLM reasoning in the agent layer instead.
-
-**Concept locked in:** Tools require an actual file path on disk to run
-(not in-memory content) — this is why RepoHandler keeps the cloned repo
-present on disk throughout analysis, with cleanup only happening at the
-very end of the full pipeline.
+```
+fetch_repo
+    ↓
+quality_agent
+    ↓
+security_agent
+    ↓
+synthesizer
+```
 
 ---
 
-## Day 4 — Quality Agent (first real LangGraph-style agent)
+# Day 2 — Project Setup + RepoHandler
 
-**Decision:** `temperature=0.1` for the LLM — code analysis needs
-consistent, repeatable output across runs, not creative variation.
+## Decision
 
-**Decision:** Truncating file content to first 3000 characters in the
-prompt — controls token usage and cost. Large files get partial analysis
-for now; full-file chunking is a planned v2 improvement.
+State is defined using a strict `TypedDict (ReviewState)`.
 
-**Decision:** Agent combines static tool findings (radon) WITH the LLM's
-own independent reading of the code — not purely tool-driven. The LLM
-catches issues radon's complexity score alone can't judge (e.g. unclear
-naming, weak structure, logic smells).
+Reason:
 
-**Problem hit:** LLM occasionally wrapped JSON output in markdown code
-fences (` ```json ... ``` `), breaking `json.loads()`.
-**Fix:** Added explicit strip logic — detect and remove fences before
-parsing.
-
-**Problem hit:** LLM sometimes used nested quotes/backticks inside JSON
-string values (e.g. embedding `code syntax` inside the "fix" field),
-breaking JSON escaping and causing parse failures.
-**Fix:** Added an explicit prompt rule instructing the LLM to describe
-fixes in plain English instead of embedding code-with-quotes — removed
-the entire class of bug at the prompt level instead of patching every
-possible escaping edge case in code.
-
-**Problem hit:** `content` variable was referenced in the `except` block
-before being guaranteed to exist (if `llm.invoke()` itself threw before
-`content` was assigned, the except block would crash with a
-`NameError` instead of showing the real error).
-**Fix:** Defined `content = ""` upfront before the `try` block so error
-logging always works, even on total invoke failure.
-
-**Concept locked in:** Every agent today is tested in isolation with
-manually-built state (acting as a stand-in orchestrator). This is
-correct component-level testing practice — integration via a real
-LangGraph graph happens on Day 6, where an `orchestrator_node` will
-automatically populate `state["files"]` with tool results attached,
-replacing today's manual wiring.
+* Every agent follows the same contract.
+* Prevents accidental writes to unexpected keys.
 
 ---
 
-## Architecture Pattern (applies to every agent going forward)
+## Decision
 
-Every agent in this project follows the same contract:
-1. Read relevant data from `state`
-2. Build a grounded prompt (real tool findings + actual code, not guesses)
-3. Call the LLM
-4. Parse defensively (strip fences, handle JSON errors gracefully)
-5. Enrich output with metadata (file, agent name)
-6. Write back to `state`, return `state`
+Skip files larger than **100 KB**.
 
-This consistency means adding a new agent type (Security, Performance)
-is mostly about writing a new prompt and connecting the right tool
-output — not building new infrastructure each time.
+Reason:
 
+* LLM context windows are limited.
+* Large files consume excessive tokens.
+* Better overall repository coverage.
 
-## Day 5 — Security Agent + Performance Agent
+---
 
-**Decision:** Security agent runs on ALL file languages — not just Python.
-For Python files it gets bandit findings as extra context. For other
-languages bandit returns empty findings and the LLM does pure reasoning
-on the raw code. LLM security intuition is strong enough to catch major
-issues without tool grounding for non-Python files.
+## Decision
 
-**Decision:** Performance agent uses radon findings as a complexity signal
-but the LLM goes beyond it — radon only measures cyclomatic complexity,
-not actual performance antipatterns like N+1 queries or blocking I/O.
-Same radon signal, different interpretation lens than quality agent.
+Delete cloned repositories after analysis.
 
-**Decision:** All 3 agents follow the exact same structural contract —
-same try/except pattern, same fence stripping via utils, same state
-read/write pattern. Adding a new agent type is mostly writing a new
-prompt, not new infrastructure.
+Reason:
 
-**Decision:** Extracted shared utilities into backend/utils.py:
-- clean_llm_response() — boundary-based JSON extraction using
-  find("[") and rfind("]") instead of relying on fence stripping
-  alone. More robust — works even if LLM adds text before/after the array.
-- safe_llm_call() — automatic retry with exponential backoff (10s/20s/30s)
-  on rate limit hits. Single place to update retry logic across all agents.
+Keeping repositories permanently wastes storage.
 
-**Decision:** Permanently skip test files (test_*.py, conftest.py,
-tests/ directories) from analysis. Test files are not production code —
-analyzing them produces noise. Figent focuses on source code only.
+---
 
-**Testing constraint (temporary):** File content limited to 2000 chars,
-max 5 findings per file, 150 char limit on issue/fix fields — purely
-for fast iteration during development. TO BE REMOVED ON DAY 16 before
-final demo.
+## Problem
 
-**Problem hit:** JSON getting truncated mid-string on files with many
-findings — LLM generating responses longer than the API allows.
-Fix: Reduced content sent to LLM + added max findings constraint
-during testing. Long-term fix: chunked file analysis in Week 2.
+Windows marks `.git` files as read-only.
 
-**Problem hit:** Rate limit 429 hit when running multiple agents back
-to back — model has 8000 TPM limit on free tier.
-Fix: Added safe_llm_call() with exponential backoff retry.
+`shutil.rmtree()` failed with:
 
-**Concept locked in:** Files list starts empty (no tool_results).
-Orchestrator attaches tool_results to each file dict before agents run.
-Each file dict becomes self-contained — path + content + language +
-tool findings all in one place.
+```
+PermissionError
+```
 
-Day 6 — LangGraph Orchestration
+### Fix
 
-Decision: Orchestrator wrapped in try/except — if repo cloning fails 
-(bad URL, private repo, network issue), error is written to state 
-instead of crashing the whole graph. Agents downstream handle empty 
-file lists gracefully.
+Added `_force_remove()` via `onexc=`.
 
-Decision: Agents run sequentially (orchestrator → quality → security → 
-performance) rather than in parallel for v1. LangGraph supports parallel 
-node execution, but sequential is simpler to debug and reason about 
-findings ordering. Parallel execution is a noted v2 performance 
-improvement once the sequential version is fully stable.
+The handler:
 
-Testing constraint: Limited to first 10 files during development to 
-avoid rate limits and long test cycles. Will be reconsidered for 
-production — likely scoped to changed files in a PR rather than 
-the entire repo, to keep review time reasonable at scale.
+* Changes file permissions
+* Retries deletion
 
-Milestone: First successful end-to-end graph run — repo URL in, 
-structured findings from all 3 agents out, fully automated. This 
-replaces all manual state-building from Day 4-5 test files.
+No impact on Linux or macOS.
 
+---
 
+## Decision
 
-SHAPE OF RESULT 
+Expanded supported languages.
 
-result = {
-    "repo_url": "https://github.com/octocat/Hello-World",   # unchanged from input
-    "repo_path": "./temp_repos/Hello-World",                 # set by orchestrator
-    "files": [                                                # set by orchestrator
-        {
-            "path": "README",
-            "content": "...",
-            "language": "py",  # or whatever
-            "size_kb": 0.1,
-            "tool_results": {"bandit_findings": [], "radon_findings": []}
-        },
-        ...
-    ],
-    "quality_findings": [                                     # set by quality agent
-        {"line": 5, "issue": "...", "severity": "medium", "fix": "...", "confidence": 80, "file": "...", "agent": "quality"}
-    ],
-    "security_findings": [...],                                # set by security agent
-    "performance_findings": [...],                             # set by performance agent
-    "all_findings": [],                                        # still empty — synthesizer not built yet
-    "final_report": {},                                        # still empty — synthesizer not built yet
-    "pr_urls": [],                                              # still empty — GitHub PR node not built yet
-    "error": None                                               # None if everything succeeded, error string if not
+Originally:
+
+```
+.py
+```
+
+Now:
+
+```
+.py
+.js
+.ts
+.java
+.go
+```
+
+Reason:
+
+LLMs analyze code as plain text.
+
+Only Bandit and Radon remain Python-specific.
+
+---
+
+# Day 3 — Static Analysis Tools
+
+## Decision
+
+Use CLI tools through `subprocess`.
+
+Instead of:
+
+```python
+import bandit
+import radon
+```
+
+Use:
+
+```
+bandit -f json
+radon cc -j
+```
+
+Reason:
+
+CLI JSON output is more stable than internal Python APIs.
+
+---
+
+## Decision
+
+Radon complexity threshold:
+
+| Complexity | Severity |
+| ---------- | -------- |
+| 0–8        | Ignore   |
+| 9–15       | Medium   |
+| >15        | High     |
+
+This avoids unnecessary noise.
+
+---
+
+## Decision
+
+Static analysis only runs on Python files.
+
+Other languages return:
+
+```python
+tool_results = {
+    "bandit_findings": [],
+    "radon_findings": []
 }
+```
+
+The LLM performs reasoning without tool support.
+
+---
+
+## Concept Locked In
+
+Bandit and Radon require actual file paths.
+
+Therefore:
+
+* Clone repository
+* Run tools
+* Delete repository only after analysis completes
+
+---
+
+# Day 4 — Quality Agent
+
+## Decision
+
+LLM temperature:
+
+```
+0.1
+```
+
+Reason:
+
+Code reviews should be deterministic.
+
+---
+
+## Decision
+
+Prompt includes only the first **3000 characters**.
+
+Reason:
+
+Reduces token usage.
+
+Full-file chunking is planned for v2.
+
+---
+
+## Decision
+
+Quality Agent combines:
+
+* Radon findings
+* Independent LLM reasoning
+
+This allows detection of:
+
+* Naming issues
+* Structural problems
+* Logic smells
+
+which Radon cannot identify.
+
+---
+
+## Problem
+
+LLM wrapped JSON inside markdown fences.
+
+Example:
+
+````text
+```json
+[
+ ...
+]
+```
+````
+
+### Fix
+
+Strip markdown fences before parsing.
+
+---
+
+## Problem
+
+Nested quotes inside JSON broke parsing.
+
+### Fix
+
+Prompt now requires fixes in plain English instead of embedded code.
+
+---
+
+## Problem
+
+`content` could be undefined if `llm.invoke()` failed.
+
+### Fix
+
+Initialize:
+
+```python
+content = ""
+```
+
+before entering the `try` block.
+
+---
+
+## Concept Locked In
+
+Agents are tested independently using manually constructed state.
+
+Full LangGraph integration comes later.
+
+---
+
+# Architecture Pattern
+
+Every agent follows the same lifecycle:
+
+1. Read state
+2. Build grounded prompt
+3. Call the LLM
+4. Parse defensively
+5. Enrich with metadata
+6. Write back to state
+
+Adding a new agent only requires:
+
+* A new prompt
+* Appropriate tool context
+
+No new infrastructure.
+
+---
+
+# Day 5 — Security Agent + Performance Agent
+
+## Decision
+
+Security Agent analyzes **all languages**.
+
+Python files receive Bandit findings.
+
+Other languages rely on LLM reasoning.
+
+---
+
+## Decision
+
+Performance Agent uses Radon as a signal, not as the final authority.
+
+The LLM also detects:
+
+* Blocking I/O
+* N+1 queries
+* Inefficient algorithms
+
+---
+
+## Decision
+
+Shared utilities extracted into:
+
+```
+backend/utils.py
+```
+
+### Utilities
+
+#### `clean_llm_response()`
+
+Extracts JSON using:
+
+```python
+find("[")
+rfind("]")
+```
+
+instead of relying solely on markdown fence removal.
+
+---
+
+#### `safe_llm_call()`
+
+Adds exponential backoff:
+
+* 10 seconds
+* 20 seconds
+* 30 seconds
+
+for handling rate limits.
+
+---
+
+## Decision
+
+Skip test files permanently.
+
+Ignored:
+
+* `test_*.py`
+* `conftest.py`
+* `tests/`
+
+Reason:
+
+Only production code is reviewed.
+
+---
+
+## Temporary Testing Limits
+
+* 2000 characters per file
+* Maximum 5 findings
+* 150-character issue/fix fields
+
+Scheduled for removal before the final demo.
+
+---
+
+## Problem
+
+Large JSON responses exceeded model limits.
+
+### Fix
+
+Reduce:
+
+* input size
+* maximum findings
+
+Future solution:
+
+Chunked file analysis.
+
+---
+
+## Problem
+
+HTTP 429 rate limits.
+
+### Fix
+
+Automatic retries using exponential backoff.
+
+---
+
+## Concept Locked In
+
+Orchestrator enriches each file with tool results before any agent executes.
+
+Each file becomes self-contained.
+
+---
+
+# Day 6 — LangGraph Orchestration
+
+## Decision
+
+Wrap the Orchestrator in `try/except`.
+
+Failure scenarios:
+
+* Invalid repository
+* Private repository
+* Network errors
+
+Errors are stored in:
+
+```python
+state["error"]
+```
+
+instead of crashing the graph.
+
+---
+
+## Decision
+
+Agents execute sequentially.
+
+```
+Orchestrator
+      ↓
+Quality
+      ↓
+Security
+      ↓
+Performance
+```
+
+Parallel execution is reserved for v2.
+
+---
+
+## Testing Constraint
+
+Analyze only the first **10 files**.
+
+Purpose:
+
+* Faster iteration
+* Reduced rate limits
+
+Future production strategy:
+
+Analyze only changed files.
+
+---
+
+## Milestone
+
+First successful end-to-end pipeline.
+
+Input:
+
+```
+Repository URL
+```
+
+Output:
+
+```
+Structured findings from all three agents
+```
+
+without manual state creation.
+
+---
+
+# Review State Structure
+
+```python
+result = {
+    "repo_url": "...",
+    "repo_path": "...",
+    "files": [
+        {
+            "path": "...",
+            "content": "...",
+            "language": "...",
+            "size_kb": 0.1,
+            "tool_results": {
+                "bandit_findings": [],
+                "radon_findings": []
+            }
+        }
+    ],
+    "quality_findings": [],
+    "security_findings": [],
+    "performance_findings": [],
+    "all_findings": [],
+    "final_report": {},
+    "pr_urls": [],
+    "error": None
+}
+```
+
+---
+
+# Day 7 — Synthesizer Agent
+
+## Decision
+
+Deduplicate findings using:
+
+* File path
+* Line proximity (±5 lines)
+
+instead of exact line matching.
+
+---
+
+## Decision
+
+Merged findings use:
+
+* Highest severity
+* Highest confidence
+* Fix from highest-confidence agent
+
+---
+
+## Decision
+
+PR threshold:
+
+```
+Confidence ≥ 85%
+```
+
+Lower-confidence findings remain report-only.
+
+---
+
+## Decision
+
+`final_report` stores:
+
+* Complete findings
+* Severity summary
+
+to support dashboards.
+
+---
+
+# Day 8 — Fix Generation
+
+## Decision
+
+Generate fixes **only** for PR-eligible findings.
+
+Reason:
+
+Avoid wasting tokens on low-confidence issues.
+
+---
+
+## Decision
+
+Provide the LLM with:
+
+* 10 lines before
+* Issue line (marked with `>>>`)
+* 10 lines after
+
+This provides enough context without sending the entire file.
+
+---
+
+## Decision
+
+Fix format:
+
+```json
+{
+  "original_code": "...",
+  "fixed_code": "..."
+}
+```
+
+Chosen over unified diffs because string replacement is simpler and more reliable.
+
+---
+
+# Day 9 — GitHub PR Opening
+
+## Decision
+
+One pull request per finding.
+
+Reason:
+
+Smaller PRs are easier to review.
+
+---
+
+## Decision
+
+Branch naming convention:
+
+```text
+figent/fix-{filename}-L{line}
+```
+
+Automated branches remain grouped.
+
+---
+
+## Decision
+
+Apply fixes using exact string replacement.
+
+```
+original_code
+      ↓
+fixed_code
+```
+
+instead of replacing by line number.
+
+Reason:
+
+Line numbers change after earlier edits.
+
+---
+
+## Decision
+
+If `original_code` is not found:
+
+* Skip the pull request
+* Continue processing
+
+Never open a broken PR.
+
+---
+
+## Safety Decision
+
+Automatic PR creation only occurs on repositories with write access.
+
+Third-party repositories always run in **report-only mode**.
+
+This is the project's primary responsible AI safeguard.
+Day 9 — GitHub PR + Issue Opening
+
+Decision: Three-tier action system based on severity + confidence:
+- Critical/High + confidence ≥ 85% → PR with automated fix
+- Medium/Low OR confidence < 85% → GitHub Issue for human review  
+- Confidence < 60% → Report only, no GitHub action
+This mirrors how real code review tools operate — not everything 
+deserves automation.
+
+Decision: LLM generates PR and Issue titles — conventional commit 
+format for PRs (fix(scope): description), bracketed severity format 
+for Issues ([SEVERITY] description). More professional than 
+auto-generated text from finding content.
+
+Decision: If a PR-eligible finding has no valid code_fix, it gets 
+downgraded to an Issue automatically instead of being skipped. 
+No finding is silently lost — it always surfaces somewhere.
+
+Decision: Labels applied to Issues by severity — critical/high get 
+"bug" label, medium gets "enhancement", all get "figent" label for 
+easy filtering. Makes Figent's Issues identifiable at a glance.

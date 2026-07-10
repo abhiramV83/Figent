@@ -3,22 +3,42 @@ import time
 def repair_truncated_json(content: str) -> str:
     """Attempt to repair truncated JSON array"""
     content = content.strip()
-    
-    # Find the last complete object — last occurrence of }
-    last_complete = content.rfind("}")
+
+    # Find the last COMPLETE object — must end with }
+    # Walk backwards finding complete objects
+    last_complete = -1
+    depth = 0
+    in_string = False
+    escape_next = False
+
+    for i, char in enumerate(content):
+        if escape_next:
+            escape_next = False
+            continue
+        if char == "\\" and in_string:
+            escape_next = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                last_complete = i
+
     if last_complete == -1:
         return "[]"
-    
-    # Cut everything after the last complete object
+
     repaired = content[:last_complete + 1]
-    
-    # Close the array
-    repaired = repaired + "]"
-    
-    # If it doesn't start with [ add it
+
     if not repaired.startswith("["):
         repaired = "[" + repaired
-    
+
+    repaired = repaired + "]"
     return repaired
 
 
