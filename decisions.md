@@ -774,3 +774,20 @@ No finding is silently lost — it always surfaces somewhere.
 Decision: Labels applied to Issues by severity — critical/high get 
 "bug" label, medium gets "enhancement", all get "figent" label for 
 easy filtering. Makes Figent's Issues identifiable at a glance.
+
+
+Day 10 — Chat Agent
+
+Decision: Chat agent is stateless between sessions but stateful within 
+a session — conversation history maintained in memory during one chat 
+session, cleared when session ends. Full history sent with every message 
+so LLM has conversation context.
+
+Decision: System prompt built from review_result dict — not from 
+database. For the chat session the review result is already in memory, 
+no DB query needed. DB persistence happens in Day 13 when FastAPI 
+routes are built.
+
+Decision: Findings summary truncated to 100 chars per finding in system 
+prompt — keeps context window manageable. Full finding details available 
+if user asks specifically about one.
