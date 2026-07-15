@@ -1,4 +1,5 @@
 import json
+import time
 from backend.agents.chat_agent import ChatAgent
 
 with open("tests/last_result.json", "r") as f:
@@ -24,3 +25,4 @@ for question in questions:
     response = agent.chat(question)
     print(f"🤖 Figent: {response}")
     print("─" * 55)
+    time.sleep(5)
