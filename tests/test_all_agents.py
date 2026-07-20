@@ -6,7 +6,7 @@ from backend.agents.performance_agent import performance_agent_node
 import os
 
 handler = RepoHandler()
-repo_url = "https://github.com/pallets/flask"
+repo_url = "https://github.com/abhiramV83/figent-test-repo"
 repo_path = handler.clone(repo_url)
 
 files = handler.get_code_files(repo_path)

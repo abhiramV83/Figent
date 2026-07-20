@@ -838,3 +838,17 @@ them against pr_urls to determine action_taken per finding. This
 denormalizes slightly (action_taken stored on finding) but makes
 querying findings with their GitHub URLs much simpler --- no join
 needed.
+
+
+# Day 13 — FastAPI + WebSocket
+
+Decision: WebSocket for review streaming — client gets live updates 
+as each agent completes instead of waiting for full analysis. 
+Matches the streaming UX decision made earlier.
+
+Decision: REST for chat — WebSocket not needed since chat is 
+request/response, not a stream. Simpler to implement and debug.
+
+Decision: POST /review creates a DB record immediately and returns 
+review_id — frontend can use this ID to connect to WebSocket and 
+receive streaming updates.
