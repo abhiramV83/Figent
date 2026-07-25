@@ -45,7 +45,7 @@ graph TD
 - **Database**: PostgreSQL (Neon database integration with connection pooling)
 - **Static Analysis Tools**: Radon (Complexity analysis), Bandit (Security checking)
 - **Frontend**: React (Vite-powered, TailwindCSS styling)
-- **Authentication**: JWT/Bearer token sessions, Secure Hash Verification (PBKDF2-HMAC-SHA256)
+- **Authentication**: Database-backed session tokens, Secure Hash Verification (PBKDF2-HMAC-SHA256)
 
 ---
 
