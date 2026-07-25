@@ -839,15 +839,139 @@ denormalizes slightly (action_taken stored on finding) but makes
 querying findings with their GitHub URLs much simpler --- no join
 needed.
 
-
-# Day 13 — FastAPI + WebSocket
+## Day 13 — FastAPI + WebSocket
 
 Decision: WebSocket for review streaming — client gets live updates
-as each agent completes. REST for everything else — chat, history,
-review retrieval. Right tool for right job.
+as each agent completes instead of waiting for full analysis.
+REST for everything else — chat, history, review retrieval.
+Right tool for right job.
 
-Decision: Health endpoint added — Render uses it to confirm backend
-is alive. Without it Render marks service as failed even when running.
+Decision: Health endpoint added at GET /health — Render uses this
+to confirm backend is alive. Without it Render marks service as
+failed even when running fine.
 
 Decision: CORS configured for both localhost:3000 (dev) and Vercel
-URL (prod). Update Vercel URL after deployment on Day 16.
+URL (prod). Vercel URL updated after deployment on Day 16.
+
+Decision: Keepalive message sent after synthesizer completes —
+PR agent takes a long time (GitHub API calls per finding). Without
+keepalive the WebSocket times out waiting. Client handles keepalive
+type without breaking the listen loop.
+
+Problem hit: WebSocket closing with code 1011 (internal error) —
+keepalive ping timeout during long PR agent execution.
+Fix: Increased uvicorn ws-ping-timeout to 300s, added keepalive
+event after synthesizer, increased test timeout to 600s.
+
+---
+
+## Day 14 — React Dashboard (Analysis View)
+
+Decision: Dark theme (gray-950 background) — code review tools
+conventionally use dark UI. Matches developer expectations and
+makes severity colors (red, orange, yellow, green) pop visually.
+
+Decision: WebSocket connection managed in Home.jsx with useRef —
+ws instance stored in ref not state so reconnects don't trigger
+re-renders. Prevents duplicate connections on state updates.
+
+Decision: Live agent progress shown as cards appearing one by one
+as each WebSocket event fires. User sees system working in real
+time instead of a blank loading spinner for 3-5 minutes.
+
+Decision: Auto-redirect to /review/:id after complete event fires —
+1.5 second delay so user sees the "complete" confirmation before
+navigating. Immediate redirect feels jarring.
+
+Decision: Findings displayed with severity color coding —
+critical=red, high=orange, medium=yellow, low=gray. Color alone
+communicates urgency before reading the text.
+
+Decision: GitHub URL shown as "View PR" or "View Issue" badge on
+each finding — direct link to the GitHub action taken. User can
+click straight from the dashboard to the opened PR.
+
+Decision: Two tabs on review page — findings and chat. Keeps
+the page clean. User reads findings first, then asks questions
+about them in chat. Natural flow.
+
+---
+
+## Day 15 — History View + Polish
+
+Decision: History page shows all reviews ordered by created_at
+descending — most recent first. Each review shows repo URL,
+timestamp, status, finding count, PR count, issue count.
+
+Decision: Status color coded — complete=green, running=yellow,
+failed=red. Running status means the graph crashed before
+completing — user knows not to expect results.
+
+Decision: Click anywhere on history row to navigate to review —
+full row is clickable, not just a button. Better UX on mobile.
+
+Decision: Empty state message when no reviews exist — "No reviews
+yet. Run your first analysis." Avoids blank page confusion on
+first use.
+
+---
+
+## Day 16 — Remove Constraints + Deployment
+
+Decision: Removed testing constraints from all 3 agent prompts —
+max findings limit, character limits on issue/fix fields.
+Replaced with chunked file analysis (6000 char chunks, 500 char
+overlap). Chunking solves truncation at the root instead of
+limiting output quality.
+
+Decision: chunk_file() added to utils.py — splits large files
+into overlapping chunks so no file content is lost. 500 char
+overlap preserves context at chunk boundaries. Each chunk carries
+start_line so agents report accurate line numbers.
+
+Decision: Render for backend deployment — free tier sufficient
+for portfolio demo. Cold start (~30 seconds after inactivity)
+is acceptable — warn interviewer before demo.
+
+Decision: Vercel for frontend — zero config React deployment,
+automatic HTTPS, instant CDN. Free tier has no limitations for
+portfolio use.
+
+Decision: Environment variables set on Render dashboard — never
+committed to GitHub. GROQ_API_KEY, GITHUB_TOKEN, DATABASE_URL
+all injected at runtime via Render env var config.
+
+Decision: API base URL configured via Vite environment variables
+(VITE_API_URL, VITE_WS_URL) — dev points to localhost, prod
+points to Render URL. One config change switches environments,
+no code changes needed.
+
+Decision: wss:// (secure WebSocket) used in production — required
+since Vercel frontend is HTTPS. ws:// only for localhost dev.
+
+---
+
+## Day 17 — README + Eval + Demo Video
+
+Decision: Eval suite built against figent-test-repo which has
+4 known intentional vulnerabilities — hardcoded password, SQL
+injection, command injection, O(n³) complexity. Precision and
+recall measured against these known issues.
+
+Decision: Precision and recall reported in README — shows system
+actually works, not just claims to. Real numbers from real test.
+This is what separates a serious project from a tutorial.
+
+Decision: README structured as: one-liner → live demo link →
+what it does → architecture → tech stack → eval results →
+engineering decisions → local setup. Recruiter reads top to
+bottom and has everything they need in 2 minutes.
+
+Decision: Demo video is exactly 2 minutes — shows: URL input →
+live agent streaming → findings dashboard → GitHub PRs and Issues
+opened → chat agent Q&A. Every major feature visible, no
+unnecessary narration.
+
+Decision: decisions.md linked from README — shows engineering
+maturity. Most students never document why they made choices.
+This file alone differentiates the project in interviews.
