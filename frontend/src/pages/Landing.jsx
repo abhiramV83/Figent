@@ -1,9 +1,25 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import { API_BASE } from '../config'
 import { olive, sand } from '../theme'
 import logoImg from '../assets/logo.png'
 
-export default function Landing() {
+export default function Landing({ onLogin }) {
+  const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+
+  const handleGetStarted = () => {
+    setLoading(true)
+    axios.post(`${API_BASE}/api/auth/guest`)
+      .then(res => {
+        onLogin(res.data.token, res.data.username)
+      })
+      .catch(err => {
+        console.error('Failed to initialize guest session', err)
+        setLoading(false)
+      })
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: sand.bg, fontFamily: 'Outfit, Plus Jakarta Sans, sans-serif' }}>
@@ -20,15 +36,17 @@ export default function Landing() {
             <span style={{ color: sand[950], fontSize: '16px', fontWeight: 800, letterSpacing: '-0.3px' }}>Figent</span>
           </div>
           <button
-            onClick={() => navigate('/login')}
+            disabled={loading}
+            onClick={handleGetStarted}
             style={{
               background: olive[600], color: '#f7f9eb', border: 'none', borderRadius: '8px',
-              padding: '8px 18px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
+              padding: '8px 18px', fontSize: '13px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.15s',
+              opacity: loading ? 0.7 : 1
             }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = olive[700]}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = olive[600]}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.backgroundColor = olive[700] }}
+            onMouseLeave={e => { if (!loading) e.currentTarget.style.backgroundColor = olive[600] }}
           >
-            Sign In
+            {loading ? 'Entering...' : 'Get Started'}
           </button>
         </div>
       </nav>
@@ -52,15 +70,17 @@ export default function Landing() {
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
           <button
-            onClick={() => navigate('/login')}
+            disabled={loading}
+            onClick={handleGetStarted}
             style={{
               background: olive[600], color: '#f7f9eb', border: 'none', borderRadius: '10px',
-              padding: '14px 28px', fontSize: '15px', fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s'
+              padding: '14px 28px', fontSize: '15px', fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.15s',
+              opacity: loading ? 0.7 : 1
             }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = olive[700]}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = olive[600]}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.backgroundColor = olive[700] }}
+            onMouseLeave={e => { if (!loading) e.currentTarget.style.backgroundColor = olive[600] }}
           >
-            Get Started
+            {loading ? 'Entering...' : 'Get Started'}
           </button>
           <button
             onClick={() => {
