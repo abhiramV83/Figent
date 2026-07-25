@@ -1,0 +1,10 @@
+[
+  {
+    "repo": "figent-test-repo",
+    "known_issues": 4,
+    "detected": 4,
+    "true_positives": 4,
+    "precision": 50.0,
+    "recall": 100.0
+  }
+]

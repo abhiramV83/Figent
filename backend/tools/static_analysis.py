@@ -1,12 +1,23 @@
 import subprocess
 import json
+import sys
+import os
 from typing import List, Dict
+
+def get_executable_path(name: str) -> str:
+    """Get the path to the executable, checking the virtual environment's bin/Scripts directory first."""
+    bindir = os.path.dirname(sys.executable)
+    ext = ".exe" if os.name == "nt" else ""
+    local_path = os.path.join(bindir, f"{name}{ext}")
+    if os.path.exists(local_path):
+        return local_path
+    return name  # Fallback to system PATH
 
 def run_bandit(file_path: str) -> List[Dict]:
     """Run bandit security scan on a single file, return structured findings"""
     try:
         result = subprocess.run(
-            ["bandit", "-f", "json", file_path],
+            [get_executable_path("bandit"), "-f", "json", file_path],
             capture_output=True,
             text=True,
             timeout=30
@@ -33,7 +44,7 @@ def run_radon(file_path: str) -> List[Dict]:
     """Run radon complexity analysis, return structured findings"""
     try:
         result = subprocess.run(
-            ["radon", "cc", "-j", file_path],
+            [get_executable_path("radon"), "cc", "-j", file_path],
             capture_output=True,
             text=True,
             timeout=30

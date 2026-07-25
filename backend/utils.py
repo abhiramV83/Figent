@@ -81,3 +81,22 @@ def safe_llm_call(llm, prompt: str, retries: int = 3) -> str:
             else:
                 raise e
     return ""
+def chunk_file(content: str, chunk_size: int = 6000, overlap: int = 500) -> list:
+    """Split large files into overlapping chunks"""
+    if len(content) <= chunk_size:
+        return [{"content": content, "start_line": 1}]
+
+    chunks = []
+    start = 0
+    while start < len(content):
+        end = start + chunk_size
+        chunk_content = content[start:end]
+        start_line = content[:start].count("\n") + 1
+        chunks.append({
+            "content": chunk_content,
+            "start_line": start_line
+        })
+        if end >= len(content):
+            break
+        start = end - overlap
+    return chunks

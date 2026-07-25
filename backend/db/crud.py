@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
-from backend.db.models import Review, Finding, ChatSession, ChatMessage
+from backend.db.models import User, Review, Finding, ChatSession, ChatMessage
 from datetime import datetime
 
-def create_review(db: Session, repo_url: str) -> Review:
+def create_review(db: Session, repo_url: str, owner_id: int = None) -> Review:
     """Create a new review record"""
-    review = Review(repo_url=repo_url, status="running")
+    review = Review(repo_url=repo_url, status="running", owner_id=owner_id)
     db.add(review)
     db.commit()
     db.refresh(review)
@@ -73,6 +73,13 @@ def create_chat_session(db: Session, review_id: int) -> ChatSession:
     db.refresh(session)
     return session
 
+def get_latest_chat_session(db: Session, review_id: int) -> ChatSession:
+    """Get the most recent chat session for a review"""
+    return db.query(ChatSession)\
+             .filter(ChatSession.review_id == review_id)\
+             .order_by(ChatSession.created_at.desc())\
+             .first()
+
 def save_chat_message(db: Session, session_id: int,
                       role: str, content: str) -> ChatMessage:
     """Save a chat message"""
@@ -101,3 +108,82 @@ def fail_review(db: Session, review_id: int, error: str) -> Review:
         review.error = error
         db.commit()
     return review
+
+# ── User CRUD ───────────────────────────────────────────
+
+def get_user_by_username(db: Session, username: str) -> User:
+    """Find a user by username"""
+    return db.query(User).filter(User.username == username).first()
+
+def get_user_by_token(db: Session, token: str) -> User:
+    """Find a user by their session token"""
+    return db.query(User).filter(User.token == token).first()
+
+def create_user(db: Session, username: str, password_hash: str, email: str = None) -> User:
+    """Create a new user"""
+    user = User(username=username, password_hash=password_hash, email=email)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+def update_user_verification_otp(db: Session, user: User, otp: str, expires_at: datetime) -> User:
+    """Store verification OTP and expiration"""
+    user.verification_otp = otp
+    user.verification_otp_expires = expires_at
+    db.commit()
+    db.refresh(user)
+    return user
+
+def verify_user_email(db: Session, user: User) -> User:
+    """Mark user as verified and clear OTP fields"""
+    user.is_verified = True
+    user.verification_otp = None
+    user.verification_otp_expires = None
+    db.commit()
+    db.refresh(user)
+    return user
+
+def get_user_by_verification_otp(db: Session, email: str, otp: str) -> User:
+    """Find a user by email and matching verification OTP"""
+    return db.query(User).filter(
+        User.email == email,
+        User.verification_otp == otp
+    ).first()
+
+def update_user_token(db: Session, user: User, token: str, expires_at: datetime) -> User:
+    """Update a user's active session token"""
+    user.token = token
+    user.token_expires = expires_at
+    db.commit()
+    db.refresh(user)
+    return user
+
+def get_user_by_email(db: Session, email: str) -> User:
+    """Find a user by email"""
+    return db.query(User).filter(User.email == email).first()
+
+def get_user_by_reset_token(db: Session, token: str) -> User:
+    """Find a user by reset token"""
+    return db.query(User).filter(User.reset_token == token).first()
+
+def update_user_reset_token(db: Session, user: User, token: str, expires_at: datetime) -> User:
+    """Update user's password reset token"""
+    user.reset_token = token
+    user.reset_token_expires = expires_at
+    db.commit()
+    db.refresh(user)
+    return user
+
+def update_user_password(db: Session, user: User, password_hash: str) -> User:
+    """Update user's hashed password and clear reset token"""
+    user.password_hash = password_hash
+    user.reset_token = None
+    user.reset_token_expires = None
+    db.commit()
+    db.refresh(user)
+    return user
+
+def get_user_reviews(db: Session, user_id: int) -> list:
+    """Get all past reviews for a specific user"""
+    return db.query(Review).filter(Review.owner_id == user_id).order_by(Review.created_at.desc()).all()

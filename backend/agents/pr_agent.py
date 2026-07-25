@@ -56,7 +56,7 @@ def pr_agent_node(state: ReviewState) -> ReviewState:
                 "severity": finding["severity"],
                 "issue": finding["issue"]
             })
-            print(f"  ✅ {url}")
+            print(f"  [OK] {url}")
 
     # Open Issues
     print(f"\nOpening Issues...")
@@ -72,7 +72,7 @@ def pr_agent_node(state: ReviewState) -> ReviewState:
                 "severity": finding["severity"],
                 "issue": finding["issue"]
             })
-            print(f"  ✅ {url}")
+            print(f"  [OK] {url}")
 
     state["pr_urls"] = pr_urls
 

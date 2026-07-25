@@ -842,13 +842,12 @@ needed.
 
 # Day 13 — FastAPI + WebSocket
 
-Decision: WebSocket for review streaming — client gets live updates 
-as each agent completes instead of waiting for full analysis. 
-Matches the streaming UX decision made earlier.
+Decision: WebSocket for review streaming — client gets live updates
+as each agent completes. REST for everything else — chat, history,
+review retrieval. Right tool for right job.
 
-Decision: REST for chat — WebSocket not needed since chat is 
-request/response, not a stream. Simpler to implement and debug.
+Decision: Health endpoint added — Render uses it to confirm backend
+is alive. Without it Render marks service as failed even when running.
 
-Decision: POST /review creates a DB record immediately and returns 
-review_id — frontend can use this ID to connect to WebSocket and 
-receive streaming updates.
+Decision: CORS configured for both localhost:3000 (dev) and Vercel
+URL (prod). Update Vercel URL after deployment on Day 16.

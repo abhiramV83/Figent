@@ -45,10 +45,10 @@ print(f"PR Eligible: {result['final_report'].get('pr_eligible_count', 0)}")
 
 severity = result['final_report'].get('by_severity', {})
 print(f"\nSeverity Breakdown:")
-print(f"  🔴 Critical : {severity.get('critical', 0)}")
-print(f"  🟠 High     : {severity.get('high', 0)}")
-print(f"  🟡 Medium   : {severity.get('medium', 0)}")
-print(f"  🟢 Low      : {severity.get('low', 0)}")
+print(f"  [CRITICAL] : {severity.get('critical', 0)}")
+print(f"  [HIGH]     : {severity.get('high', 0)}")
+print(f"  [MEDIUM]   : {severity.get('medium', 0)}")
+print(f"  [LOW]      : {severity.get('low', 0)}")
 
 print("\n" + "="*60)
 print("FINDINGS")
@@ -56,23 +56,25 @@ print("="*60)
 
 for i, f in enumerate(result["all_findings"], 1):
     severity_icon = {
-        "critical": "🔴",
-        "high": "🟠",
-        "medium": "🟡",
-        "low": "🟢"
-    }.get(f["severity"], "⚪")
+        "critical": "[CRITICAL]",
+        "high": "[HIGH]",
+        "medium": "[MEDIUM]",
+        "low": "[LOW]"
+    }.get(f["severity"], "[UNKNOWN]")
 
-    pr_badge = "✅ PR WILL BE OPENED" if f.get("pr_eligible", False) else "📋 REPORT ONLY"
+    pr_badge = "PR WILL BE OPENED" if f.get("pr_eligible", False) else "REPORT ONLY"
 
-    print(f"""
-#{i} {severity_icon} {f['severity'].upper()} — {f['file']} (Line {f['line']})
-{'─'*55}
-🔍 Issue     : {f['issue']}
-🔧 Fix       : {f['fix']}
-📊 Confidence: {f['confidence']}%
-🤖 Agents    : {', '.join(f['agents'])}
-🚀 Action    : {pr_badge}
-""")
+    output_str = f"""
+#{i} {severity_icon} - {f['file']} (Line {f['line']})
+{"="*55}
+Issue       : {f['issue']}
+Fix         : {f['fix']}
+Confidence  : {f['confidence']}%
+Agents      : {', '.join(f['agents'])}
+Action      : {pr_badge}
+"""
+    output_str = output_str.replace('\u2011', '-').replace('\u2013', '-').replace('\u2014', '-')
+    print(output_str.encode('ascii', errors='replace').decode('ascii'))
 
 print("="*60)
 print(f"Analysis Complete.")

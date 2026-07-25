@@ -8,6 +8,26 @@ from datetime import datetime
 
 Base = declarative_base()
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    token = Column(String, unique=True, index=True, nullable=True)
+    token_expires = Column(DateTime, nullable=True)
+    
+    email = Column(String, index=True, nullable=True)
+    reset_token = Column(String, index=True, nullable=True)
+    reset_token_expires = Column(DateTime, nullable=True)
+    
+    is_verified = Column(Boolean, default=False)
+    verification_otp = Column(String, nullable=True)
+    verification_otp_expires = Column(DateTime, nullable=True)
+
+    reviews = relationship("Review", back_populates="owner")
+
+
 class Review(Base):
     __tablename__ = "reviews"
 
@@ -20,7 +40,9 @@ class Review(Base):
     pr_count = Column(Integer, default=0)
     issue_count = Column(Integer, default=0)
     error = Column(Text, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    owner = relationship("User", back_populates="reviews")
     findings = relationship("Finding", back_populates="review")
     chat_sessions = relationship("ChatSession", back_populates="review")
 

@@ -1,0 +1,327 @@
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import Chat from '../components/chat'
+import { API_BASE } from '../config'
+import { olive, sand } from '../theme'
+
+const severityLeft = {
+  critical: '#b91c1c', // sharp red
+  high: '#ea580c',     // sharp orange
+  medium: '#ca8a04',   // sharp yellow/gold
+  low: olive[600]      // sharp olive
+}
+
+const severityBadge = {
+  critical: { color: '#991b1b', background: '#fef2f2', border: '1px solid #fca5a5', fontWeight: 800 },
+  high: { color: '#9a3412', background: '#fff7ed', border: '1px solid #fdba74', fontWeight: 800 },
+  medium: { color: '#854d0e', background: '#fefce8', border: '1px solid #fde047', fontWeight: 800 },
+  low: { color: olive[700], background: olive[50], border: `1px solid ${olive[200]}`, fontWeight: 800 }
+}
+
+export default function Review({ token, onAuthError }) {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const [review, setReview] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('findings')
+  const [severityFilter, setSeverityFilter] = useState('all')
+  const [sessionId, setSessionId] = useState(null)
+
+  useEffect(() => {
+    if (!token) return
+    axios.get(`${API_BASE}/api/review/${id}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => { setReview(res.data); setLoading(false) })
+    .catch(err => {
+      setLoading(false)
+      if (err.response?.status === 401 && onAuthError) {
+        onAuthError()
+      }
+    })
+
+    axios.post(`${API_BASE}/api/chat/session/${id}`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => setSessionId(res.data.session_id))
+    .catch(err => {
+      console.error(err)
+      if (err.response?.status === 401 && onAuthError) {
+        onAuthError()
+      }
+    })
+  }, [id, token, onAuthError])
+
+  if (loading) return (
+    <div style={{ minHeight: 'calc(100vh - 4rem)', background: sand.bg,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: sand[600], fontSize: '13px', fontWeight: 650 }}>
+      Loading analysis...
+    </div>
+  )
+
+  if (!review) return (
+    <div style={{ minHeight: 'calc(100vh - 4rem)', background: sand.bg,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'column', gap: '14px' }}>
+      <span style={{ color: '#b91c1c', fontWeight: 750 }}>Report not found</span>
+      <button onClick={() => navigate('/')}
+        style={{ background: olive[600], color: '#f7f9eb', border: 'none',
+          borderRadius: '8px', padding: '8px 18px', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}>
+        Go home
+      </button>
+    </div>
+  )
+
+  const findings = review.findings || []
+  const critical = findings.filter(f => f.severity === 'critical')
+  const high = findings.filter(f => f.severity === 'high')
+  const medium = findings.filter(f => f.severity === 'medium')
+  const low = findings.filter(f => f.severity === 'low')
+  const withAction = findings.filter(f => f.action_taken !== 'report_only')
+
+  const filteredFindings = findings.filter(f => {
+    if (severityFilter === 'all') return true
+    if (severityFilter === 'github') return f.action_taken !== 'report_only'
+    return f.severity === severityFilter
+  })
+
+  const filters = [
+    { id: 'all', label: 'All', count: findings.length },
+    { id: 'critical', label: 'Critical', count: critical.length },
+    { id: 'high', label: 'High', count: high.length },
+    { id: 'medium', label: 'Medium', count: medium.length },
+    { id: 'low', label: 'Low', count: low.length },
+    { id: 'github', label: 'GitHub', count: withAction.length }
+  ]
+
+  return (
+    <div style={{ minHeight: 'calc(100vh - 4rem)', background: sand.bg }}
+      className="py-10 px-6"
+    >
+      <div className="max-w-5xl mx-auto">
+
+        {/* Back link */}
+        <button onClick={() => navigate('/history')}
+          style={{ background: 'none', border: 'none', color: sand[600],
+            fontSize: '12px', cursor: 'pointer', marginBottom: '16px', padding: 0,
+            display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700 }}
+          onMouseEnter={e => e.currentTarget.style.color = olive[600]}
+          onMouseLeave={e => e.currentTarget.style.color = sand[600]}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+              stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Back to History
+        </button>
+
+        {/* Repo URL header */}
+        <div style={{ marginBottom: '28px' }}>
+          <h1 style={{ color: sand[950], fontSize: '22px', fontWeight: 800,
+            fontFamily: 'monospace', wordBreak: 'break-all', margin: '0 0 6px' }}>
+            {review.repo_url}
+          </h1>
+          <p style={{ color: sand[600], fontSize: '12px', margin: 0, fontWeight: 600 }}>
+            Completed {new Date(review.created_at.endsWith('Z') || review.created_at.includes('+') ? review.created_at : review.created_at + 'Z').toLocaleString()}
+          </p>
+        </div>
+
+        {/* Stats row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '28px' }}>
+          {[
+            { label: 'Total Findings', value: review.total_findings, accent: sand[950] },
+            { label: 'PRs Opened', value: review.pr_count, accent: olive[600] },
+            { label: 'Issues Opened', value: review.issue_count, accent: olive[500] },
+            { label: 'Critical', value: critical.length, accent: '#b91c1c' }
+          ].map(stat => (
+            <div key={stat.label}
+              style={{ background: sand[50], border: `1px solid ${sand[200]}`,
+                borderRadius: '12px', padding: '18px 20px' }}>
+              <div style={{ fontSize: '26px', fontWeight: 800, color: stat.accent, lineHeight: 1 }}>
+                {stat.value}
+              </div>
+              <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.07em', color: sand[500], marginTop: '8px' }}>
+                {stat.label}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${sand[200]}`, marginBottom: '24px' }}>
+          {[
+            { id: 'findings', label: 'Findings Report' },
+            { id: 'chat', label: 'AI Assistant' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '10px 18px', fontSize: '13px', fontWeight: 700,
+                borderBottom: activeTab === tab.id ? `2px solid ${olive[600]}` : '2px solid transparent',
+                color: activeTab === tab.id ? olive[600] : sand[600],
+                transition: 'color 0.15s', marginBottom: '-1px'
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Findings tab */}
+        {activeTab === 'findings' && (
+          <div>
+            {/* Filter row */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+              {filters.map(f => {
+                const active = severityFilter === f.id
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => setSeverityFilter(f.id)}
+                    style={{
+                      background: active ? olive[600] : sand[50],
+                      color: active ? '#f7f9eb' : sand[700],
+                      border: active ? `1px solid ${olive[600]}` : `1px solid ${sand[200]}`,
+                      borderRadius: '8px', padding: '6px 14px',
+                      fontSize: '12px', fontWeight: 700,
+                      cursor: 'pointer', transition: 'all 0.15s',
+                      display: 'flex', alignItems: 'center', gap: '7px'
+                    }}
+                  >
+                    <span>{f.label}</span>
+                    <span style={{
+                      background: active ? 'rgba(255,255,255,0.2)' : sand[100],
+                      color: active ? '#f7f9eb' : sand[600],
+                      borderRadius: '4px', padding: '1px 6px',
+                      fontSize: '10px', fontWeight: 800
+                    }}>
+                      {f.count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {filteredFindings.map((f, i) => (
+                <div key={i} style={{
+                  background: sand[50], border: `1px solid ${sand[200]}`,
+                  borderLeft: `4px solid ${severityLeft[f.severity] || sand[200]}`,
+                  borderRadius: '12px', padding: '18px 20px'
+                }}>
+                  {/* Top row */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start',
+                    justifyContent: 'space-between', gap: '12px',
+                    paddingBottom: '12px', marginBottom: '12px',
+                    borderBottom: `1px solid ${sand[200]}`
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span style={{
+                        ...(severityBadge[f.severity] || {}),
+                        fontSize: '9px', textTransform: 'uppercase',
+                        letterSpacing: '0.07em', borderRadius: '5px', padding: '2px 8px'
+                      }}>
+                        {f.severity}
+                      </span>
+                      <span style={{ fontFamily: 'monospace', fontSize: '12px', color: sand[950], fontWeight: 700,
+                        maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={f.file}>
+                        {f.file}
+                      </span>
+                      {f.line && (
+                        <span style={{ background: sand[100], border: `1px solid ${sand[200]}`,
+                          borderRadius: '5px', padding: '1px 8px', fontSize: '11px', color: sand[700],
+                          fontFamily: 'monospace', fontWeight: 600 }}>
+                          L{f.line}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                      <span style={{ color: sand[500], fontSize: '11px', fontWeight: 600 }}>
+                        {f.confidence}% confidence
+                      </span>
+                      {f.github_url && (
+                        <a href={f.github_url} target="_blank" rel="noreferrer"
+                          style={{
+                            background: olive[100], border: `1px solid ${olive[200]}`,
+                            color: olive[700], borderRadius: '7px',
+                            padding: '4px 12px', fontSize: '11px', fontWeight: 700,
+                            textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px'
+                          }}>
+                          {f.action_taken === 'pr' ? 'View PR' : 'View Issue'}
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+                            <path d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                              stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  <p style={{ color: sand[950], fontSize: '13.5px', lineHeight: 1.65, margin: '0 0 14px', fontWeight: 600 }}>
+                    {f.issue}
+                  </p>
+
+                  {f.fix && (
+                    <div style={{ background: sand[100], border: `1px solid ${sand[200]}`,
+                      borderRadius: '9px', padding: '14px 16px' }}>
+                      <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase',
+                        letterSpacing: '0.1em', color: sand[500], marginBottom: '8px' }}>
+                        Suggested Fix
+                      </div>
+                      <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '12px',
+                        color: olive[700], fontWeight: 700, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {f.fix}
+                      </pre>
+                    </div>
+                  )}
+
+                  {f.agents && f.agents.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+                      gap: '6px', marginTop: '12px', paddingTop: '10px', borderTop: `1px solid ${sand[200]}` }}>
+                      <span style={{ fontSize: '9px', color: sand[500], fontWeight: 800,
+                        textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        Detected by
+                      </span>
+                      {f.agents.map((a, j) => (
+                        <span key={j} style={{ background: sand[100], border: `1px solid ${sand[200]}`,
+                          color: sand[700], borderRadius: '5px', padding: '2px 8px',
+                          fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+                          letterSpacing: '0.05em' }}>
+                          {a}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {filteredFindings.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '48px',
+                  background: sand[50], border: `1px dashed ${sand[200]}`, borderRadius: '12px' }}>
+                  <p style={{ color: sand[600], fontSize: '13px', fontWeight: 600 }}>
+                    No findings in this category.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Chat tab */}
+        {activeTab === 'chat' && sessionId && (
+          <div style={{ background: sand[50], border: `1px solid ${sand[200]}`, borderRadius: '14px', padding: '24px' }}>
+            <Chat token={token} reviewId={id} sessionId={sessionId} onNewSession={setSessionId} />
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}

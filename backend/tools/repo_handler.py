@@ -1,6 +1,7 @@
 import os
 import shutil
 import stat
+import tempfile
 from git import Repo
 from pathlib import Path
 from typing import List, Dict
@@ -21,12 +22,20 @@ def _force_remove(func, path, exc_info):
 
 
 class RepoHandler:
-    def __init__(self, clone_dir="./temp_repos"):
-        self.clone_dir = clone_dir
-        os.makedirs(clone_dir, exist_ok=True)
+    def __init__(self, clone_dir=None):
+        if clone_dir is None:
+            self.clone_dir = os.path.join(tempfile.gettempdir(), "figent_repos")
+        else:
+            self.clone_dir = clone_dir
+        os.makedirs(self.clone_dir, exist_ok=True)
 
     def clone(self, repo_url: str) -> str:
         """Clone repo and return local path"""
+        # Normalize GitHub URL to base repository path
+        parts = repo_url.rstrip("/").split("/")
+        if len(parts) >= 5 and "github.com" in parts[2]:
+            repo_url = "/".join(parts[:5])
+
         repo_name = repo_url.rstrip("/").split("/")[-1]
         repo_name = repo_name.replace(".git", "")
         target_path = os.path.join(self.clone_dir, repo_name)
