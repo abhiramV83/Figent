@@ -280,7 +280,51 @@ def send_verification_email(to_email: str, username: str, otp: str):
         except Exception as resend_err:
             logger.error(f"Failed to send email via Resend: {resend_err}")
 
-    # 2. Option B: Fallback to standard SMTP
+    # 2. Option B: Send via SendGrid API (HTTP POST)
+    sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
+    if sendgrid_api_key:
+        try:
+            logger.info("Using SendGrid API for email delivery...")
+            sendgrid_from = os.getenv("SENDGRID_FROM_EMAIL", smtp_from)
+            response = requests.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers={
+                    "Authorization": f"Bearer {sendgrid_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "personalizations": [
+                        {
+                            "to": [
+                                {
+                                    "email": to_email
+                                }
+                            ]
+                        }
+                    ],
+                    "from": {
+                        "email": sendgrid_from,
+                        "name": "Figent"
+                    },
+                    "subject": "Figent Email Verification Code",
+                    "content": [
+                        {
+                            "type": "text/html",
+                            "value": html_content
+                        }
+                    ]
+                },
+                timeout=15
+            )
+            if response.status_code in [200, 201, 202]:
+                logger.info(f"Verification email successfully sent to {to_email} via SendGrid API")
+                return
+            else:
+                logger.error(f"SendGrid API error: {response.status_code} - {response.text}")
+        except Exception as sg_err:
+            logger.error(f"Failed to send email via SendGrid: {sg_err}")
+
+    # 3. Option C: Fallback to standard SMTP
     if not all([smtp_host, smtp_port, smtp_username, smtp_password]):
         email_body = f"""
 ============================================================
@@ -464,7 +508,51 @@ def send_reset_otp_email(to_email: str, username: str, otp: str):
         except Exception as resend_err:
             logger.error(f"Failed to send email via Resend: {resend_err}")
 
-    # 2. Option B: Fallback to standard SMTP
+    # 2. Option B: Send via SendGrid API (HTTP POST)
+    sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
+    if sendgrid_api_key:
+        try:
+            logger.info("Using SendGrid API for email delivery...")
+            sendgrid_from = os.getenv("SENDGRID_FROM_EMAIL", smtp_from)
+            response = requests.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers={
+                    "Authorization": f"Bearer {sendgrid_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "personalizations": [
+                        {
+                            "to": [
+                                {
+                                    "email": to_email
+                                }
+                            ]
+                        }
+                    ],
+                    "from": {
+                        "email": sendgrid_from,
+                        "name": "Figent"
+                    },
+                    "subject": "Figent Password Reset Code",
+                    "content": [
+                        {
+                            "type": "text/html",
+                            "value": html_content
+                        }
+                    ]
+                },
+                timeout=15
+            )
+            if response.status_code in [200, 201, 202]:
+                logger.info(f"Password reset OTP email successfully sent to {to_email} via SendGrid API")
+                return
+            else:
+                logger.error(f"SendGrid API error: {response.status_code} - {response.text}")
+        except Exception as sg_err:
+            logger.error(f"Failed to send email via SendGrid: {sg_err}")
+
+    # 3. Option C: Fallback to standard SMTP
     if not all([smtp_host, smtp_port, smtp_username, smtp_password]):
         email_body = f"""
 ============================================================
