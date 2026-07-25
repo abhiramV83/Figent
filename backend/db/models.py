@@ -41,6 +41,7 @@ class Review(Base):
     issue_count = Column(Integer, default=0)
     error = Column(Text, nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    ip_address = Column(String, nullable=True)
 
     owner = relationship("User", back_populates="reviews")
     findings = relationship("Finding", back_populates="review")

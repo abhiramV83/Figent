@@ -2,9 +2,9 @@ from sqlalchemy.orm import Session
 from backend.db.models import User, Review, Finding, ChatSession, ChatMessage
 from datetime import datetime
 
-def create_review(db: Session, repo_url: str, owner_id: int = None) -> Review:
+def create_review(db: Session, repo_url: str, owner_id: int = None, ip_address: str = None) -> Review:
     """Create a new review record"""
-    review = Review(repo_url=repo_url, status="running", owner_id=owner_id)
+    review = Review(repo_url=repo_url, status="running", owner_id=owner_id, ip_address=ip_address)
     db.add(review)
     db.commit()
     db.refresh(review)

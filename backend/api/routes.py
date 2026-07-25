@@ -7,11 +7,12 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from backend.db.models import Review
 
 from backend.db.database import get_db
 from backend.db import crud
@@ -742,12 +743,54 @@ def get_me(user = Depends(get_current_user)):
     """Verify session token and retrieve user details"""
     return {"id": user.id, "username": user.username}
 
+
+def get_client_ip(request: Request) -> str:
+    x_forwarded_for = request.headers.get("x-forwarded-for")
+    if x_forwarded_for:
+        return x_forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "127.0.0.1"
+
+
+@router.post("/auth/guest")
+def create_guest_user(db: Session = Depends(get_db)):
+    """Automatically register and authenticate an anonymous guest user"""
+    import secrets
+    
+    guest_id = secrets.token_hex(4)
+    username = f"guest_{guest_id}"
+    password_hash = hash_password(secrets.token_hex(16))
+    email = f"{username}@figent.com"
+    
+    user = crud.create_user(db, username, password_hash, email)
+    crud.verify_user_email(db, user)
+    
+    token = generate_token()
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    crud.update_user_token(db, user, token, expires_at)
+    
+    return {
+        "token": token,
+        "username": username,
+        "message": "Guest session created successfully"
+    }
+
+
 # ── Review Routes ────────────────────────────────────────
 
 @router.post("/review")
-async def start_review(request: ReviewRequest, db: Session = Depends(get_db), user = Depends(get_current_user)):
-    """Start a new code review — returns review_id immediately"""
-    review = crud.create_review(db, request.repo_url, owner_id=user.id)
+async def start_review(request: Request, review_req: ReviewRequest, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    """Start a new code review — returns review_id immediately with IP-based rate limiting"""
+    client_ip = get_client_ip(request)
+    
+    # Check if this IP has already performed a review
+    existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
+    if existing_reviews_count >= 1:
+        raise HTTPException(
+            status_code=429,
+            detail="Free tier limit reached. You can only perform one code audit review. Please contact support to upgrade."
+        )
+    
+    review = crud.create_review(db, review_req.repo_url, owner_id=user.id, ip_address=client_ip)
     return {"review_id": review.id, "status": "started"}
 
 
@@ -895,8 +938,25 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
         if repo_url.endswith('.git'):
             repo_url = repo_url[:-4]
 
+        # Enforce IP-based rate limit of 1 review
+        client_ip = None
+        x_forwarded_for = websocket.headers.get("x-forwarded-for")
+        if x_forwarded_for:
+            client_ip = x_forwarded_for.split(",")[0].strip()
+        else:
+            client_ip = websocket.client.host if websocket.client else "127.0.0.1"
+
+        existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
+        if existing_reviews_count >= 1:
+            await send_event({
+                "type": "error",
+                "message": "Free tier limit reached. You can only perform one code audit review. Please contact support to upgrade."
+            })
+            await websocket.close(code=4029)
+            return
+
         # Create review record linked to user
-        review = crud.create_review(db, repo_url, owner_id=user.id)
+        review = crud.create_review(db, repo_url, owner_id=user.id, ip_address=client_ip)
         
         # Initialize stop event and store in active_stop_events registry
         stop_event = asyncio.Event()
