@@ -279,9 +279,9 @@ This code is valid for 10 minutes.
 
         port = int(smtp_port)
         if port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, port)
+            server = smtplib.SMTP_SSL(smtp_host, port, timeout=15)
         else:
-            server = smtplib.SMTP(smtp_host, port)
+            server = smtplib.SMTP(smtp_host, port, timeout=15)
             server.starttls()
 
         server.login(smtp_username, smtp_password)
@@ -434,9 +434,9 @@ This code is valid for 10 minutes.
 
         port = int(smtp_port)
         if port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, port)
+            server = smtplib.SMTP_SSL(smtp_host, port, timeout=15)
         else:
-            server = smtplib.SMTP(smtp_host, port)
+            server = smtplib.SMTP(smtp_host, port, timeout=15)
             server.starttls()
 
         server.login(smtp_username, smtp_password)
