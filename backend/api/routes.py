@@ -289,7 +289,7 @@ This code is valid for 10 minutes.
         server.quit()
         logger.info(f"Verification email successfully sent to {to_email} via SMTP")
     except Exception as e:
-        logger.error(f"Error sending verification email to {to_email}: {e}")
+        logger.error(f"Error sending verification email to {to_email}: {e}. Fallback: OTP code is {otp}")
 def send_reset_otp_email(to_email: str, username: str, otp: str):
     import logging
     logger = logging.getLogger("uvicorn.error")
@@ -444,7 +444,7 @@ This code is valid for 10 minutes.
         server.quit()
         logger.info(f"Password reset OTP email successfully sent to {to_email} via SMTP")
     except Exception as e:
-        logger.error(f"Error sending SMTP email to {to_email}: {e}")
+        logger.error(f"Error sending SMTP email to {to_email}: {e}. Fallback: OTP code is {otp}")
 
 
 # ── Authentication Routes ─────────────────────────────────
