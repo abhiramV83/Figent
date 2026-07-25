@@ -136,12 +136,13 @@ def send_verification_email(to_email: str, username: str, otp: str):
     _env_path = Path(__file__).resolve().parents[2] / ".env"
     load_dotenv(dotenv_path=str(_env_path), override=True)
 
+    import requests
     import logging
     logger = logging.getLogger("uvicorn.error")
 
     logger.info(f"Attempting to send verification email to {to_email}")
 
-    # Force reload .env dynamically to pick up new SMTP variables instantly
+    # Force reload .env dynamically to pick up new SMTP/Resend variables instantly
     try:
         from pathlib import Path
         from dotenv import load_dotenv
@@ -151,6 +152,7 @@ def send_verification_email(to_email: str, username: str, otp: str):
     except Exception as path_err:
         logger.warning(f"Could not load dotenv dynamically: {path_err}")
 
+    resend_api_key = os.getenv("RESEND_API_KEY")
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = os.getenv("SMTP_PORT")
     smtp_username = os.getenv("SMTP_USERNAME")
@@ -252,6 +254,33 @@ def send_verification_email(to_email: str, username: str, otp: str):
 </html>
 """
 
+    # 1. Option A: Send via Resend API (HTTP POST)
+    if resend_api_key:
+        try:
+            logger.info("Using Resend API for email delivery...")
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": "Figent <onboarding@resend.dev>",
+                    "to": [to_email],
+                    "subject": "Figent Email Verification Code",
+                    "html": html_content
+                },
+                timeout=15
+            )
+            if response.status_code in [200, 201, 202]:
+                logger.info(f"Verification email successfully sent to {to_email} via Resend API")
+                return
+            else:
+                logger.error(f"Resend API error: {response.status_code} - {response.text}")
+        except Exception as resend_err:
+            logger.error(f"Failed to send email via Resend: {resend_err}")
+
+    # 2. Option B: Fallback to standard SMTP
     if not all([smtp_host, smtp_port, smtp_username, smtp_password]):
         email_body = f"""
 ============================================================
@@ -289,14 +318,15 @@ This code is valid for 10 minutes.
         server.quit()
         logger.info(f"Verification email successfully sent to {to_email} via SMTP")
     except Exception as e:
-        logger.error(f"Error sending verification email to {to_email}: {e}. Fallback: OTP code is {otp}")
+        logger.error(f"Error sending verification email to {to_email}: {e}")
 def send_reset_otp_email(to_email: str, username: str, otp: str):
+    import requests
     import logging
     logger = logging.getLogger("uvicorn.error")
 
     logger.info(f"Attempting to send password reset email to {to_email}")
 
-    # Force reload .env dynamically to pick up new SMTP variables instantly
+    # Force reload .env dynamically to pick up new SMTP/Resend variables instantly
     try:
         from pathlib import Path
         from dotenv import load_dotenv
@@ -306,6 +336,7 @@ def send_reset_otp_email(to_email: str, username: str, otp: str):
     except Exception as path_err:
         logger.warning(f"Could not load dotenv dynamically: {path_err}")
 
+    resend_api_key = os.getenv("RESEND_API_KEY")
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = os.getenv("SMTP_PORT")
     smtp_username = os.getenv("SMTP_USERNAME")
@@ -407,6 +438,33 @@ def send_reset_otp_email(to_email: str, username: str, otp: str):
 </html>
 """
 
+    # 1. Option A: Send via Resend API (HTTP POST)
+    if resend_api_key:
+        try:
+            logger.info("Using Resend API for email delivery...")
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": "Figent <onboarding@resend.dev>",
+                    "to": [to_email],
+                    "subject": "Figent Password Reset Code",
+                    "html": html_content
+                },
+                timeout=15
+            )
+            if response.status_code in [200, 201, 202]:
+                logger.info(f"Password reset OTP email successfully sent to {to_email} via Resend API")
+                return
+            else:
+                logger.error(f"Resend API error: {response.status_code} - {response.text}")
+        except Exception as resend_err:
+            logger.error(f"Failed to send email via Resend: {resend_err}")
+
+    # 2. Option B: Fallback to standard SMTP
     if not all([smtp_host, smtp_port, smtp_username, smtp_password]):
         email_body = f"""
 ============================================================
@@ -444,7 +502,7 @@ This code is valid for 10 minutes.
         server.quit()
         logger.info(f"Password reset OTP email successfully sent to {to_email} via SMTP")
     except Exception as e:
-        logger.error(f"Error sending SMTP email to {to_email}: {e}. Fallback: OTP code is {otp}")
+        logger.error(f"Error sending SMTP email to {to_email}: {e}")
 
 
 # ── Authentication Routes ─────────────────────────────────
