@@ -132,6 +132,21 @@ def send_verification_email(to_email: str, username: str, otp: str):
     _env_path = Path(__file__).resolve().parents[2] / ".env"
     load_dotenv(dotenv_path=str(_env_path), override=True)
 
+    import logging
+    logger = logging.getLogger("uvicorn.error")
+
+    logger.info(f"Attempting to send verification email to {to_email}")
+
+    # Force reload .env dynamically to pick up new SMTP variables instantly
+    try:
+        from pathlib import Path
+        from dotenv import load_dotenv
+        _env_path = Path(__file__).resolve().parents[2] / ".env"
+        if _env_path.exists():
+            load_dotenv(dotenv_path=str(_env_path), override=True)
+    except Exception as path_err:
+        logger.warning(f"Could not load dotenv dynamically: {path_err}")
+
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = os.getenv("SMTP_PORT")
     smtp_username = os.getenv("SMTP_USERNAME")
@@ -247,7 +262,7 @@ Your email verification OTP code is: {otp}
 This code is valid for 10 minutes.
 ============================================================
 """
-        print(email_body)
+        logger.info(email_body)
         return
 
     try:
@@ -268,22 +283,24 @@ This code is valid for 10 minutes.
         server.login(smtp_username, smtp_password)
         server.sendmail(smtp_from, to_email, msg.as_string())
         server.quit()
-        print(f"Verification email successfully sent to {to_email} via SMTP")
+        logger.info(f"Verification email successfully sent to {to_email} via SMTP")
     except Exception as e:
-        print(f"Error sending verification email to {to_email}: {e}")
-
-
+        logger.error(f"Error sending verification email to {to_email}: {e}")
 def send_reset_otp_email(to_email: str, username: str, otp: str):
-    import os
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    from pathlib import Path
-    from dotenv import load_dotenv
+    import logging
+    logger = logging.getLogger("uvicorn.error")
+
+    logger.info(f"Attempting to send password reset email to {to_email}")
 
     # Force reload .env dynamically to pick up new SMTP variables instantly
-    _env_path = Path(__file__).resolve().parents[2] / ".env"
-    load_dotenv(dotenv_path=str(_env_path), override=True)
+    try:
+        from pathlib import Path
+        from dotenv import load_dotenv
+        _env_path = Path(__file__).resolve().parents[2] / ".env"
+        if _env_path.exists():
+            load_dotenv(dotenv_path=str(_env_path), override=True)
+    except Exception as path_err:
+        logger.warning(f"Could not load dotenv dynamically: {path_err}")
 
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = os.getenv("SMTP_PORT")
@@ -400,7 +417,7 @@ Your password reset OTP code is: {otp}
 This code is valid for 10 minutes.
 ============================================================
 """
-        print(email_body)
+        logger.info(email_body)
         return
 
     try:
@@ -421,9 +438,9 @@ This code is valid for 10 minutes.
         server.login(smtp_username, smtp_password)
         server.sendmail(smtp_from, to_email, msg.as_string())
         server.quit()
-        print(f"Password reset OTP email successfully sent to {to_email} via SMTP")
+        logger.info(f"Password reset OTP email successfully sent to {to_email} via SMTP")
     except Exception as e:
-        print(f"Error sending SMTP email to {to_email}: {e}")
+        logger.error(f"Error sending SMTP email to {to_email}: {e}")
 
 
 # ── Authentication Routes ─────────────────────────────────
