@@ -123,6 +123,17 @@ export default function Home({ token, onAuthError }) {
     return () => clearInterval(pollInterval)
   }, [status, runningReview, token, navigate, onAuthError])
 
+  const handleGithubRedirect = () => {
+    const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID
+    if (!clientId) {
+      alert('GitHub Client ID is not configured in Vercel settings.')
+      return
+    }
+    const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback')
+    const githubUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=read:user,user:email`
+    window.location.href = githubUrl
+  }
+
   const completedEvents  = events.filter(e => e.type === 'agent_complete' || e.type === 'started')
 
   const handleStop = async () => {
@@ -629,16 +640,58 @@ export default function Home({ token, onAuthError }) {
                 <p style={{ color: '#b05a48', fontSize: '12px', marginBottom: '14px', fontWeight: 600, lineHeight: 1.5 }}>
                   {errorMessage || 'Something went wrong during the pipeline execution.'}
                 </p>
-                <button
-                  onClick={() => setStatus('idle')}
-                  style={{
-                    background: olive[600], color: '#f7f9eb', border: 'none',
-                    borderRadius: '8px', padding: '8px 20px',
-                    fontSize: '12px', fontWeight: 700, cursor: 'pointer'
-                  }}
-                >
-                  Try again
-                </button>
+                {errorMessage && (
+                  errorMessage.toLowerCase().includes('guest') || 
+                  errorMessage.toLowerCase().includes('limit') || 
+                  errorMessage.toLowerCase().includes('github')
+                ) ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center', marginTop: '12px' }}>
+                    <button
+                      onClick={handleGithubRedirect}
+                      style={{
+                        background: '#1f2328',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '10px 20px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'background 0.2s'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = '#2f353c'}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = '#1f2328'}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z"/>
+                      </svg>
+                      Continue with GitHub
+                    </button>
+                    <button
+                      onClick={() => setStatus('idle')}
+                      style={{
+                        background: 'none', border: 'none', color: olive[700],
+                        fontSize: '11px', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline'
+                      }}
+                    >
+                      Back to Dashboard
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setStatus('idle')}
+                    style={{
+                      background: olive[600], color: '#f7f9eb', border: 'none',
+                      borderRadius: '8px', padding: '8px 20px',
+                      fontSize: '12px', fontWeight: 700, cursor: 'pointer'
+                    }}
+                  >
+                    Try again
+                  </button>
+                )}
               </div>
             )}
           </div>
