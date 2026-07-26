@@ -72,7 +72,7 @@ export default function App() {
             token ? (
               <ProtectedRoute><Home token={token} onAuthError={handleLogout} /></ProtectedRoute>
             ) : (
-              <Landing onLogin={(tok, uname) => handleLogin(tok, uname)} />
+              <Landing />
             )
           }
         />
