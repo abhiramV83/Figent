@@ -40,7 +40,7 @@ export default function App() {
       <div style={{ 
         minHeight: '100vh', 
         background: '#f5f3ec', 
-        backgroundImage: 'radial-gradient(rgba(122, 133, 90, 0.08) 1.2px, transparent 0)',
+        backgroundImage: 'radial-gradient(rgba(122, 133, 90, 0.16) 1.5px, transparent 0)',
         backgroundSize: '24px 24px',
         display: 'flex', 
         flexDirection: 'column' 
