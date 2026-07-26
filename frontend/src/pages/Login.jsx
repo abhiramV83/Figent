@@ -68,7 +68,7 @@ export default function Login({ onLogin }) {
         </div>
 
         {/* Card */}
-        <div style={{ background: sand[50], border: `1px solid ${sand[200]}`, borderRadius: '16px', padding: '32px' }}>
+        <div className="auth-card" style={{ background: sand[50], border: `1px solid ${sand[200]}`, borderRadius: '16px', padding: '32px' }}>
           
           {error && (
             <div style={{ 
@@ -144,6 +144,13 @@ export default function Login({ onLogin }) {
           </div>
         </div>
       </div>
+      <style>{`
+        @media (max-width: 480px) {
+          .auth-card {
+            padding: 20px !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }

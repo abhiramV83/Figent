@@ -68,7 +68,7 @@ export default function ForgotPassword() {
         </div>
 
         {/* Card */}
-        <div style={{ background: sand[50], border: `1px solid ${sand[200]}`, borderRadius: '16px', padding: '28px' }}>
+        <div className="auth-card" style={{ background: sand[50], border: `1px solid ${sand[200]}`, borderRadius: '16px', padding: '28px' }}>
           
           {error && (
             <div style={{ background: '#fdf0ee', border: '1px solid #e8c4bc', borderRadius: '10px', color: '#7a2d1e', fontSize: '13px', fontWeight: 700, padding: '12px 16px', marginBottom: '20px' }}>
@@ -122,6 +122,13 @@ export default function ForgotPassword() {
           )}
         </div>
       </div>
+      <style>{`
+        @media (max-width: 480px) {
+          .auth-card {
+            padding: 20px !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }

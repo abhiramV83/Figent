@@ -129,7 +129,7 @@ export default function Review({ token, onAuthError }) {
         </div>
 
         {/* Stats row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '28px' }}>
+        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '28px' }}>
           {[
             { label: 'Total Findings', value: review.total_findings, accent: sand[950] },
             { label: 'PRs Opened', value: review.pr_count, accent: olive[600] },
@@ -322,6 +322,21 @@ export default function Review({ token, onAuthError }) {
         )}
 
       </div>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .stats-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 8px !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .stats-grid {
+            grid-template-columns: 1fr !important;
+            gap: 8px !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }
