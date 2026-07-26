@@ -222,7 +222,7 @@ export default function Home({ token, onAuthError }) {
   }
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 4rem)', background: sand.bg, position: 'relative' }}>
+    <div style={{ minHeight: 'calc(100vh - 4rem)', background: 'transparent', position: 'relative' }}>
 
       {/* Content */}
       <div style={{

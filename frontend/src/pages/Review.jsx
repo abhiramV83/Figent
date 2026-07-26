@@ -97,7 +97,7 @@ export default function Review({ token, onAuthError }) {
   ]
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 4rem)', background: sand.bg }}
+    <div style={{ minHeight: 'calc(100vh - 4rem)', background: 'transparent' }}
       className="py-10 px-6"
     >
       <div className="max-w-5xl mx-auto">

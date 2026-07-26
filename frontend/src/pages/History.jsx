@@ -30,7 +30,7 @@ export default function History({ token, onAuthError }) {
   }
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 4rem)', background: sand.bg }}
+    <div style={{ minHeight: 'calc(100vh - 4rem)', background: 'transparent' }}
       className="py-12 px-6"
     >
       <div className="max-w-3xl mx-auto">
