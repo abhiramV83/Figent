@@ -12,6 +12,8 @@ import ResetPassword from './pages/ResetPassword'
 import Landing from './pages/Landing'
 import Navbar from './components/Navbar'
 import Callback from './pages/Callback'
+import Profile from './pages/Profile'
+import Footer from './components/Footer'
 
 export default function App() {
   // Trigger rebuild to inject newly added Vercel environment variables
@@ -35,11 +37,19 @@ export default function App() {
   const ProtectedRoute = ({ children }) => {
     if (!token) return <Navigate to="/login" replace />
     return (
-      <div style={{ minHeight: '100vh', background: '#f5f3ec', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ 
+        minHeight: '100vh', 
+        background: '#f5f3ec', 
+        backgroundImage: 'radial-gradient(rgba(122, 133, 90, 0.08) 1.2px, transparent 0)',
+        backgroundSize: '24px 24px',
+        display: 'flex', 
+        flexDirection: 'column' 
+      }}>
         <Navbar user={{ username }} onLogout={handleLogout} />
-        <main style={{ flex: 1 }}>
+        <main style={{ flex: 1, zIndex: 1, position: 'relative' }}>
           {children}
         </main>
+        <Footer />
       </div>
     )
   }
@@ -78,6 +88,7 @@ export default function App() {
         />
         <Route path="/review/:id" element={<ProtectedRoute><Review token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
         <Route path="/history" element={<ProtectedRoute><History token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
         <Route path="/auth/callback" element={<Callback onLogin={(tok, uname) => handleLogin(tok, uname)} />} />
 
         {/* Fallback */}

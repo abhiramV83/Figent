@@ -62,10 +62,18 @@ export default function Navbar({ user, onLogout }) {
         {/* User + Logout */}
         {user && (
           <div className="nav-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div className="nav-user-section" style={{
-              display: 'flex', alignItems: 'center', gap: '9px',
-              paddingLeft: '14px', borderLeft: `1px solid ${sand[200]}`
-            }}>
+            <button 
+              onClick={() => navigate('/profile')} 
+              className="nav-user-section" 
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                display: 'flex', alignItems: 'center', gap: '9px',
+                paddingLeft: '14px', borderLeft: `1px solid ${sand[200]}`,
+                transition: 'opacity 0.15s'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = 0.85 }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = 1 }}
+            >
               <div style={{
                 width: 30, height: 30, borderRadius: '50%',
                 background: olive[100], border: `1px solid ${olive[200]}`,
@@ -78,7 +86,7 @@ export default function Navbar({ user, onLogout }) {
               <span className="nav-username" style={{ fontSize: '13px', fontWeight: 700, color: sand[800] }}>
                 {user.username}
               </span>
-            </div>
+            </button>
             <button
               className="nav-logout"
               onClick={onLogout}
