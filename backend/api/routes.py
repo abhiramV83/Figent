@@ -807,10 +807,18 @@ def github_auth(request: GitHubAuthRequest, db: Session = Depends(get_db)):
         token_data = token_res.json()
         access_token = token_data.get("access_token")
         if not access_token:
-            logger.error(f"Failed to get GitHub access token: {token_data}")
-            raise HTTPException(status_code=400, detail="Invalid authorization code")
+            err_msg = f"Failed to get GitHub access token. GitHub returned: {token_data}"
+            logger.error(err_msg)
+            with open("oauth_error.log", "a", encoding="utf-8") as f_err:
+                f_err.write(f"[{datetime.utcnow()}] {err_msg}\n")
+            raise HTTPException(status_code=400, detail=token_data.get("error_description") or "Invalid authorization code")
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error exchanging code with GitHub: {e}")
+        err_msg = f"Error exchanging code with GitHub: {type(e).__name__}: {e}"
+        logger.error(err_msg)
+        with open("oauth_error.log", "a", encoding="utf-8") as f_err:
+            f_err.write(f"[{datetime.utcnow()}] {err_msg}\n")
         raise HTTPException(status_code=400, detail="Failed to authenticate with GitHub")
 
     # 2. Fetch user profile from GitHub
@@ -826,10 +834,18 @@ def github_auth(request: GitHubAuthRequest, db: Session = Depends(get_db)):
         user_data = user_res.json()
         github_username = user_data.get("login")
         if not github_username:
-            logger.error(f"Failed to fetch GitHub profile: {user_data}")
+            err_msg = f"Failed to fetch GitHub profile. GitHub returned: {user_data}"
+            logger.error(err_msg)
+            with open("oauth_error.log", "a", encoding="utf-8") as f_err:
+                f_err.write(f"[{datetime.utcnow()}] {err_msg}\n")
             raise HTTPException(status_code=400, detail="Failed to fetch GitHub profile")
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error fetching GitHub profile: {e}")
+        err_msg = f"Error fetching GitHub profile: {type(e).__name__}: {e}"
+        logger.error(err_msg)
+        with open("oauth_error.log", "a", encoding="utf-8") as f_err:
+            f_err.write(f"[{datetime.utcnow()}] {err_msg}\n")
         raise HTTPException(status_code=400, detail="Failed to connect to GitHub API")
 
     # 3. Fetch user email from GitHub
@@ -886,16 +902,17 @@ def github_auth(request: GitHubAuthRequest, db: Session = Depends(get_db)):
 
 @router.post("/review")
 async def start_review(request: Request, review_req: ReviewRequest, db: Session = Depends(get_db), user = Depends(get_current_user)):
-    """Start a new code review — returns review_id immediately with IP-based rate limiting"""
+    """Start a new code review — returns review_id immediately with IP-based rate limiting for guests"""
     client_ip = get_client_ip(request)
     
-    # Check if this IP has already performed a review
-    existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
-    if existing_reviews_count >= 1:
-        raise HTTPException(
-            status_code=429,
-            detail="Free tier limit reached. You can only perform one code audit review. Please contact support to upgrade."
-        )
+    # Check if the user is a guest user
+    if user.username.startswith("guest_"):
+        existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
+        if existing_reviews_count >= 1:
+            raise HTTPException(
+                status_code=429,
+                detail="Free tier limit reached for guest sessions. Please sign in with GitHub to unlock unlimited code audits."
+            )
     
     review = crud.create_review(db, review_req.repo_url, owner_id=user.id, ip_address=client_ip)
     return {"review_id": review.id, "status": "started"}
@@ -1045,7 +1062,7 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
         if repo_url.endswith('.git'):
             repo_url = repo_url[:-4]
 
-        # Enforce IP-based rate limit of 1 review
+        # Enforce IP-based rate limit of 1 review for guest sessions
         client_ip = None
         x_forwarded_for = websocket.headers.get("x-forwarded-for")
         if x_forwarded_for:
@@ -1053,14 +1070,15 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
         else:
             client_ip = websocket.client.host if websocket.client else "127.0.0.1"
 
-        existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
-        if existing_reviews_count >= 1:
-            await send_event({
-                "type": "error",
-                "message": "Free tier limit reached. You can only perform one code audit review. Please contact support to upgrade."
-            })
-            await websocket.close(code=4029)
-            return
+        if user.username.startswith("guest_"):
+            existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
+            if existing_reviews_count >= 1:
+                await send_event({
+                    "type": "error",
+                    "message": "Free tier limit reached for guest sessions. Please sign in with GitHub to unlock unlimited code audits."
+                })
+                await websocket.close(code=4029)
+                return
 
         # Create review record linked to user
         review = crud.create_review(db, repo_url, owner_id=user.id, ip_address=client_ip)
