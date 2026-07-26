@@ -6,46 +6,33 @@ import { olive, sand } from '../theme'
 import logoImg from '../assets/logo.png'
 
 export default function Login({ onLogin }) {
-  const [user, setUser] = useState('')
-  const [pass, setPass] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
-    
-    if (user.trim().length < 3) {
-      setError('Username must be at least 3 characters')
+  const handleGithubLogin = () => {
+    const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID
+    if (!clientId) {
+      setError('GitHub Client ID is not configured in environment settings.')
       return
     }
-    if (pass.length < 4) {
-      setError('Password must be at least 4 characters')
-      return
-    }
+    const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback')
+    const githubUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=read:user,user:email`
+    window.location.href = githubUrl
+  }
 
+  const handleGuestLogin = () => {
     setLoading(true)
-    try {
-      const res = await axios.post(`${API_BASE}/api/auth/login`, { username: user, password: pass })
-      onLogin(res.data.token, res.data.username)
-      navigate('/')
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid username or password')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleUserChange = (e) => {
-    setUser(e.target.value)
-    if (error) setError('')
-  }
-
-  const handlePassChange = (e) => {
-    setPass(e.target.value)
-    if (error) setError('')
+    setError('')
+    axios.post(`${API_BASE}/api/auth/guest`)
+      .then(res => {
+        onLogin(res.data.token, res.data.username)
+        navigate('/')
+      })
+      .catch(err => {
+        setError(err.response?.data?.detail || 'Failed to initialize free workspace')
+        setLoading(false)
+      })
   }
 
   return (
@@ -93,110 +80,69 @@ export default function Login({ onLogin }) {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            
-            {/* Username Input */}
-            <div>
-              <label style={{ display: 'block', color: sand[700], fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '8px' }}>
-                Username
-              </label>
-              <input
-                required
-                type="text"
-                value={user}
-                onChange={handleUserChange}
-                placeholder="Enter username"
-                onFocus={e => e.target.style.borderColor = olive[400]}
-                onBlur={e => e.target.style.borderColor = sand[200]}
-                style={{
-                  width: '100%', background: sand[100], border: `1px solid ${sand[200]}`,
-                  borderRadius: '10px', padding: '12px 16px', fontSize: '14px',
-                  color: sand[950], outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-                  fontWeight: 600, transition: 'border-color 0.15s'
-                }}
-              />
-            </div>
-
-            {/* Password Input */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <label style={{ display: 'block', color: sand[700], fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0 }}>
-                  Password
-                </label>
-                <button
-                  type="button"
-                  onClick={() => navigate('/forgot-password')}
-                  style={{
-                    background: 'none', border: 'none', color: olive[600], cursor: 'pointer',
-                    fontWeight: 700, fontSize: '11px', padding: 0, textDecoration: 'underline', textUnderlineOffset: '2px'
-                  }}
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <div style={{ position: 'relative' }}>
-                <input
-                  required
-                  type={showPassword ? "text" : "password"}
-                  value={pass}
-                  onChange={handlePassChange}
-                  placeholder="••••••••"
-                  onFocus={e => e.target.style.borderColor = olive[400]}
-                  onBlur={e => e.target.style.borderColor = sand[200]}
-                  style={{
-                    width: '100%', background: sand[100], border: `1px solid ${sand[200]}`,
-                    borderRadius: '10px', padding: '12px 48px 12px 16px', fontSize: '14px',
-                    color: sand[950], outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-                    fontWeight: 600, transition: 'border-color 0.15s'
-                  }}
-                />
-                
-                {/* Toggle show/hide button */}
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer', color: sand[600],
-                    padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                  }}
-                >
-                  {showPassword ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <button type="submit" disabled={loading} style={{
-              width: '100%', background: loading ? sand[300] : olive[600],
-              color: '#f7f9eb', border: 'none', borderRadius: '10px',
-              padding: '13px', fontSize: '14px', fontWeight: 700,
-              cursor: loading ? 'not-allowed' : 'pointer', transition: 'background 0.2s',
-              marginTop: '8px'
-            }}>
-              {loading ? 'Signing in...' : 'Sign in'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* GitHub Login Button */}
+            <button
+              disabled={loading}
+              onClick={handleGithubLogin}
+              style={{
+                width: '100%',
+                background: '#1f2328',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '13px',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'background 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px'
+              }}
+              onMouseEnter={e => { if (!loading) e.currentTarget.style.backgroundColor = '#2f353c' }}
+              onMouseLeave={e => { if (!loading) e.currentTarget.style.backgroundColor = '#1f2328' }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z"/>
+              </svg>
+              Continue with GitHub
             </button>
-          </form>
-        </div>
 
-        <p style={{ textAlign: 'center', color: sand[500], fontSize: '13px', marginTop: '20px' }}>
-          No account?{' '}
-          <button onClick={() => navigate('/register')} style={{
-            background: 'none', border: 'none', color: olive[600], cursor: 'pointer',
-            fontWeight: 700, fontSize: '13px', padding: 0, textDecoration: 'underline', textUnderlineOffset: '3px'
-          }}>
-            Create one
-          </button>
-        </p>
+            {/* Separator line */}
+            <div style={{ display: 'flex', alignItems: 'center', margin: '10px 0' }}>
+              <div style={{ flex: 1, height: '1px', background: sand[200] }}></div>
+              <span style={{ padding: '0 10px', color: sand[400], fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>or</span>
+              <div style={{ flex: 1, height: '1px', background: sand[200] }}></div>
+            </div>
+
+            {/* Guest Login Button */}
+            <button
+              disabled={loading}
+              onClick={handleGuestLogin}
+              style={{
+                width: '100%',
+                background: sand[100],
+                color: sand[800],
+                border: `1px solid ${sand[300]}`,
+                borderRadius: '10px',
+                padding: '12px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'background 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              onMouseEnter={e => { if (!loading) e.currentTarget.style.backgroundColor = sand[200] }}
+              onMouseLeave={e => { if (!loading) e.currentTarget.style.backgroundColor = sand[100] }}
+            >
+              {loading ? 'Initializing...' : 'Continue as Guest (Free)'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

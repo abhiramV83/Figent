@@ -11,6 +11,7 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Landing from './pages/Landing'
 import Navbar from './components/Navbar'
+import Callback from './pages/Callback'
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '')
@@ -76,6 +77,7 @@ export default function App() {
         />
         <Route path="/review/:id" element={<ProtectedRoute><Review token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
         <Route path="/history" element={<ProtectedRoute><History token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
+        <Route path="/auth/callback" element={<Callback onLogin={(tok, uname) => handleLogin(tok, uname)} />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

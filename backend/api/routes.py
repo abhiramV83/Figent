@@ -109,6 +109,9 @@ class ResetPasswordRequest(BaseModel):
     otp: str
     password: str
 
+class GitHubAuthRequest(BaseModel):
+    code: str
+
 def is_strong_password(password: str) -> tuple[bool, str]:
     import re
     if len(password) < 8:
@@ -772,6 +775,110 @@ def create_guest_user(db: Session = Depends(get_db)):
         "token": token,
         "username": username,
         "message": "Guest session created successfully"
+    }
+
+
+@router.post("/auth/github")
+def github_auth(request: GitHubAuthRequest, db: Session = Depends(get_db)):
+    """Exchange GitHub authorization code for user token"""
+    import requests
+    import logging
+    logger = logging.getLogger("uvicorn.error")
+
+    client_id = os.getenv("GITHUB_CLIENT_ID")
+    client_secret = os.getenv("GITHUB_CLIENT_SECRET")
+    
+    if not client_id or not client_secret:
+        logger.error("GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET not configured in backend .env")
+        raise HTTPException(status_code=500, detail="GitHub login is not configured on the server")
+
+    # 1. Exchange authorization code for access token
+    try:
+        token_res = requests.post(
+            "https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": request.code
+            },
+            timeout=15
+        )
+        token_data = token_res.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            logger.error(f"Failed to get GitHub access token: {token_data}")
+            raise HTTPException(status_code=400, detail="Invalid authorization code")
+    except Exception as e:
+        logger.error(f"Error exchanging code with GitHub: {e}")
+        raise HTTPException(status_code=400, detail="Failed to authenticate with GitHub")
+
+    # 2. Fetch user profile from GitHub
+    try:
+        user_res = requests.get(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"token {access_token}",
+                "Accept": "application/json"
+            },
+            timeout=15
+        )
+        user_data = user_res.json()
+        github_username = user_data.get("login")
+        if not github_username:
+            logger.error(f"Failed to fetch GitHub profile: {user_data}")
+            raise HTTPException(status_code=400, detail="Failed to fetch GitHub profile")
+    except Exception as e:
+        logger.error(f"Error fetching GitHub profile: {e}")
+        raise HTTPException(status_code=400, detail="Failed to connect to GitHub API")
+
+    # 3. Fetch user email from GitHub
+    email = None
+    try:
+        email_res = requests.get(
+            "https://api.github.com/user/emails",
+            headers={
+                "Authorization": f"token {access_token}",
+                "Accept": "application/json"
+            },
+            timeout=15
+        )
+        emails_data = email_res.json()
+        # Find primary email
+        for email_info in emails_data:
+            if email_info.get("primary"):
+                email = email_info.get("email")
+                break
+        if not email and emails_data:
+            email = emails_data[0].get("email")
+    except Exception as e:
+        logger.warning(f"Failed to fetch GitHub emails: {e}")
+
+    if not email:
+        email = f"{github_username}@users.noreply.github.com"
+
+    # 4. Find or create user
+    user = crud.get_user_by_username(db, github_username)
+    if not user:
+        # Check by email to prevent duplicate accounts
+        user = crud.get_user_by_email(db, email)
+        if not user:
+            # Create a new user with a random hashed password
+            import secrets
+            random_pass = secrets.token_hex(16)
+            password_hash = hash_password(random_pass)
+            user = crud.create_user(db, github_username, password_hash, email)
+            crud.verify_user_email(db, user)
+
+    # 5. Generate and set session token
+    token = generate_token()
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    crud.update_user_token(db, user, token, expires_at)
+
+    return {
+        "token": token,
+        "username": user.username,
+        "message": "GitHub login successful"
     }
 
 
