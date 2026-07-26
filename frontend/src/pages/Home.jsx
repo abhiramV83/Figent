@@ -421,7 +421,7 @@ export default function Home({ token, onAuthError }) {
                 }}>
                   Repository URL
                 </label>
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div className="input-group" style={{ display: 'flex', gap: '10px' }}>
                   <input
                     style={{
                       flex: 1, background: sand[100],
@@ -782,6 +782,17 @@ export default function Home({ token, onAuthError }) {
         @keyframes slideIn { from{opacity:0;transform:translateY(5px);} to{opacity:1;transform:translateY(0);} }
         @keyframes popIn   { from{transform:scale(0.5);opacity:0;} to{transform:scale(1);opacity:1;} }
         @keyframes fadeIn  { from{opacity:0;} to{opacity:1;} }
+        @media (max-width: 500px) {
+          .input-group {
+            flex-direction: column !important;
+            gap: 12px !important;
+          }
+          .input-group button {
+            width: 100% !important;
+            padding: 14px !important;
+            font-size: 14px !important;
+          }
+        }
       `}</style>
     </div>
   )
