@@ -14,6 +14,7 @@ import Navbar from './components/Navbar'
 import Callback from './pages/Callback'
 
 export default function App() {
+  // Trigger rebuild to inject newly added Vercel environment variables
   const [token, setToken] = useState(localStorage.getItem('token') || '')
   const [username, setUsername] = useState(localStorage.getItem('username') || '')
 
