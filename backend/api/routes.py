@@ -898,15 +898,61 @@ def github_auth(request: GitHubAuthRequest, db: Session = Depends(get_db)):
     }
 
 
+def validate_github_repo(repo_url: str) -> bool:
+    """Validate if the repository URL is a valid, publicly accessible GitHub repository"""
+    import re
+    import requests
+    
+    # 1. Parse owner and repo name using regex
+    match = re.search(r'github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/|$)', repo_url)
+    if not match:
+        return False
+        
+    owner, repo = match.group(1), match.group(2)
+    
+    # 2. Check if the repo is publicly accessible via GitHub API
+    api_url = f"https://api.github.com/repos/{owner}/{repo}"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Figent-App"
+    }
+    
+    # Authenticate if GITHUB_TOKEN is available to avoid API rate limit blocks
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"token {token}"
+        
+    try:
+        res = requests.head(api_url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            return True
+        if res.status_code == 404:
+            return False
+            
+        # Fallback to GET check
+        res_get = requests.get(api_url, headers=headers, timeout=5)
+        return res_get.status_code == 200
+    except Exception:
+        # Fallback to True if connection times out or fails (so we don't block users due to temporary network glitch)
+        return True
+
+
 # ── Review Routes ────────────────────────────────────────
 
 @router.post("/review")
 async def start_review(request: Request, review_req: ReviewRequest, db: Session = Depends(get_db), user = Depends(get_current_user)):
     """Start a new code review — returns review_id immediately with IP-based rate limiting for guests"""
+    # Validate the repository URL first
+    if not validate_github_repo(review_req.repo_url):
+        raise HTTPException(
+            status_code=400,
+            detail="The specified repository URL is invalid or private. Please verify that it is a public GitHub repository."
+        )
+
     client_ip = get_client_ip(request)
     
-    # Check if the user is a guest user
-    if user.username.startswith("guest_"):
+    # Check if the user is a guest user (skip if local loopback IP for testing/local convenience)
+    if user.username.startswith("guest_") and client_ip not in ("127.0.0.1", "::1", "localhost"):
         existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
         if existing_reviews_count >= 1:
             raise HTTPException(
@@ -1059,8 +1105,14 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
         # Normalize repo URL — strip subpaths like /issues, /pulls, /tree/...
         import re as _re
         repo_url = _re.sub(r'(github\.com/[^/]+/[^/]+)(/.*)?$', r'\1', repo_url)
-        if repo_url.endswith('.git'):
-            repo_url = repo_url[:-4]
+        # Validate repository URL
+        if not validate_github_repo(repo_url):
+            await send_event({
+                "type": "error",
+                "message": "The specified repository URL is invalid or private. Please verify that it is a public GitHub repository."
+            })
+            await websocket.close(code=4003)
+            return
 
         # Enforce IP-based rate limit of 1 review for guest sessions
         client_ip = None
@@ -1070,7 +1122,7 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
         else:
             client_ip = websocket.client.host if websocket.client else "127.0.0.1"
 
-        if user.username.startswith("guest_"):
+        if user.username.startswith("guest_") and client_ip not in ("127.0.0.1", "::1", "localhost"):
             existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
             if existing_reviews_count >= 1:
                 await send_event({
