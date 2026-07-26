@@ -78,6 +78,26 @@ export default function Landing() {
         </div>
       </div>
 
+      {/* Product Demo Video Section */}
+      <div style={{ maxWidth: '960px', margin: '0 auto 80px', padding: '0 24px' }}>
+        <div style={{
+          background: sand[50],
+          border: `1px solid ${sand[200]}`,
+          borderRadius: '20px',
+          padding: '12px',
+          boxShadow: '0 20px 40px rgba(42, 45, 34, 0.06)',
+          animation: 'slideIn 0.6s ease-out'
+        }}>
+          <div style={{ borderRadius: '12px', overflow: 'hidden', border: `1px solid ${sand[100]}` }}>
+            <img 
+              src="/demo.webp" 
+              alt="Figent Product Walkthrough" 
+              style={{ width: '100%', height: 'auto', display: 'block' }} 
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Grid Features */}
       <div id="features" style={{ maxWidth: '1000px', margin: '0 auto', padding: '0 24px 80px' }}>
         <h2 style={{ color: sand[950], fontSize: '24px', fontWeight: 800, textAlign: 'center', marginBottom: '40px', letterSpacing: '-0.5px' }}>
