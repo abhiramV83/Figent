@@ -64,7 +64,7 @@ export default function App() {
         }} />
 
         <Navbar user={{ username }} onLogout={handleLogout} />
-        <main style={{ flex: 1, zIndex: 1, position: 'relative' }}>
+        <main style={{ flex: 1, zIndex: 1, position: 'relative', paddingBottom: '58px' }}>
           {children}
         </main>
         <Footer />

@@ -7,13 +7,16 @@ export default function Footer() {
 
   return (
     <footer style={{
-      background: 'rgba(253, 252, 248, 0.45)',
-      backdropFilter: 'blur(12px)',
+      background: 'rgba(253, 252, 248, 0.75)',
+      backdropFilter: 'blur(16px)',
       borderTop: `1px solid ${sand[200]}`,
-      padding: '16px 24px',
+      padding: '12px 24px',
       marginTop: 'auto',
-      zIndex: 10,
-      position: 'relative'
+      zIndex: 100,
+      position: 'fixed',
+      bottom: 0,
+      left: 0,
+      right: 0
     }}>
       <div style={{
         maxWidth: '1100px',
