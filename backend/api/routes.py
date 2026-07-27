@@ -1362,29 +1362,51 @@ def chat(review_id: int, request: ChatRequest, db: Session = Depends(get_db), us
     # Get or create chat agent
     if review_id not in active_chat_agents:
         # Reconstruct result dict from DB
-        result = {
-            "repo_url": review.repo_url,
-            "files": [],
-            "all_findings": [
-                {
+        findings_list = [
+            {
+                "file": f.file,
+                "line": f.line,
+                "issue": f.issue,
+                "severity": f.severity,
+                "fix": f.fix,
+                "confidence": f.confidence,
+                "agents": f.agents,
+                "pr_eligible": f.pr_eligible,
+                "action_taken": f.action_taken,
+                "github_url": f.github_url
+            }
+            for f in review.findings
+        ]
+        
+        unique_files = list(set([f.file for f in review.findings if f.file]))
+        
+        by_severity = {
+            "critical": len([f for f in findings_list if f["severity"] == "critical"]),
+            "high": len([f for f in findings_list if f["severity"] == "high"]),
+            "medium": len([f for f in findings_list if f["severity"] == "medium"]),
+            "low": len([f for f in findings_list if f["severity"] == "low"]),
+        }
+        
+        pr_urls = []
+        for f in review.findings:
+            if f.github_url:
+                pr_type = "pr" if f.action_taken == "pr" else "issue"
+                pr_urls.append({
+                    "type": pr_type,
                     "file": f.file,
                     "line": f.line,
-                    "issue": f.issue,
-                    "severity": f.severity,
-                    "fix": f.fix,
-                    "confidence": f.confidence,
-                    "agents": f.agents,
-                    "pr_eligible": f.pr_eligible,
-                    "action_taken": f.action_taken,
-                    "github_url": f.github_url
-                }
-                for f in review.findings
-            ],
-            "pr_urls": [],
+                    "url": f.github_url
+                })
+
+        result = {
+            "repo_url": review.repo_url,
+            "files": unique_files,
+            "all_findings": findings_list,
+            "pr_urls": pr_urls,
             "final_report": {
                 "total": review.total_findings,
                 "pr_eligible_count": review.pr_count,
-                "by_severity": {}
+                "by_severity": by_severity
             }
         }
         active_chat_agents[review_id] = ChatAgent(result, username=user.username)
