@@ -10,22 +10,29 @@ export default function Callback({ onLogin }) {
   const [errorMsg, setErrorMsg] = useState('')
 
   useEffect(() => {
+    // If user is already logged in, immediately redirect to dashboard
+    const existingToken = localStorage.getItem('token')
+    if (existingToken) {
+      navigate('/', { replace: true })
+      return
+    }
+
     const code = searchParams.get('code')
     if (!code) {
       setErrorMsg('No authorization code provided by GitHub')
-      setTimeout(() => navigate('/login'), 3000)
+      setTimeout(() => navigate('/login', { replace: true }), 3000)
       return
     }
 
     axios.post(`${API_BASE}/api/auth/github`, { code })
       .then(res => {
         onLogin(res.data.token, res.data.username)
-        navigate('/')
+        navigate('/', { replace: true })
       })
       .catch(err => {
         const msg = err.response?.data?.detail || 'Authentication failed. Please try again.'
         setErrorMsg(msg)
-        setTimeout(() => navigate('/login'), 3000)
+        setTimeout(() => navigate('/login', { replace: true }), 3000)
       })
   }, [searchParams, onLogin, navigate])
 

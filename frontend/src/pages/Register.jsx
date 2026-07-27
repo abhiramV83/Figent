@@ -77,7 +77,7 @@ export default function Register({ onLogin }) {
         otp: otp.trim()
       })
       onLogin(res.data.token, res.data.username)
-      navigate('/')
+      navigate('/', { replace: true })
     } catch (err) {
       setError(err.response?.data?.detail || 'Verification failed. The code may be invalid or expired.')
     } finally {

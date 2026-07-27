@@ -27,7 +27,7 @@ export default function Login({ onLogin }) {
     axios.post(`${API_BASE}/api/auth/guest`)
       .then(res => {
         onLogin(res.data.token, res.data.username)
-        navigate('/')
+        navigate('/', { replace: true })
       })
       .catch(err => {
         setError(err.response?.data?.detail || 'Failed to initialize free workspace')
