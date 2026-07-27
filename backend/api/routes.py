@@ -1307,7 +1307,7 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
             crud.complete_review(db, review.id, final_result)
 
             # Initialize chat agent for this review
-            active_chat_agents[review.id] = ChatAgent(final_result)
+            active_chat_agents[review.id] = ChatAgent(final_result, username=user.username)
 
         await send_event({
             "type": "complete",
@@ -1387,7 +1387,7 @@ def chat(review_id: int, request: ChatRequest, db: Session = Depends(get_db), us
                 "by_severity": {}
             }
         }
-        active_chat_agents[review_id] = ChatAgent(result)
+        active_chat_agents[review_id] = ChatAgent(result, username=user.username)
 
     agent = active_chat_agents[review_id]
 

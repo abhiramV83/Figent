@@ -98,7 +98,7 @@ export default function Review({ token, onAuthError }) {
 
   return (
     <div style={{ minHeight: 'calc(100vh - 4rem)', background: 'transparent' }}
-      className="py-10 px-6"
+      className="pt-10 pb-16 px-6"
     >
       <div className="max-w-5xl mx-auto">
 
@@ -131,19 +131,76 @@ export default function Review({ token, onAuthError }) {
         {/* Stats row */}
         <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '28px' }}>
           {[
-            { label: 'Total Findings', value: review.total_findings, accent: sand[950] },
-            { label: 'PRs Opened', value: review.pr_count, accent: olive[600] },
-            { label: 'Issues Opened', value: review.issue_count, accent: olive[500] },
-            { label: 'Critical', value: critical.length, accent: '#b91c1c' }
+            { 
+              label: 'Total Findings', 
+              value: review.total_findings, 
+              accent: sand[950],
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              )
+            },
+            { 
+              label: 'PRs Opened', 
+              value: review.pr_count, 
+              accent: olive[600],
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="18" r="3"></circle>
+                  <circle cx="6" cy="6" r="3"></circle>
+                  <path d="M13 6h3a2 2 0 0 1 2 2v7"></path>
+                  <line x1="6" y1="9" x2="6" y2="21"></line>
+                </svg>
+              )
+            },
+            { 
+              label: 'Issues Opened', 
+              value: review.issue_count, 
+              accent: olive[500],
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              )
+            },
+            { 
+              label: 'Critical', 
+              value: critical.length, 
+              accent: '#b91c1c',
+              icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              )
+            }
           ].map(stat => (
             <div key={stat.label}
-              style={{ background: sand[50], border: `1px solid ${sand[200]}`,
-                borderRadius: '12px', padding: '18px 20px' }}>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: stat.accent, lineHeight: 1 }}>
-                {stat.value}
+              style={{ 
+                background: 'rgba(253, 252, 248, 0.55)', 
+                backdropFilter: 'blur(16px)',
+                border: '1px solid rgba(253, 252, 248, 0.65)',
+                borderRadius: '14px', 
+                padding: '20px',
+                position: 'relative',
+                overflow: 'hidden',
+                boxShadow: '0 4px 12px rgba(42, 45, 34, 0.015)'
+              }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: stat.accent, lineHeight: 1 }}>
+                  {stat.value}
+                </div>
+                <div style={{ color: stat.accent, opacity: 0.7 }}>
+                  {stat.icon}
+                </div>
               </div>
-              <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
-                letterSpacing: '0.07em', color: sand[500], marginTop: '8px' }}>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.07em', color: sand[500], marginTop: '10px' }}>
                 {stat.label}
               </div>
             </div>
@@ -210,11 +267,27 @@ export default function Review({ token, onAuthError }) {
             {/* Cards */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {filteredFindings.map((f, i) => (
-                <div key={i} style={{
-                  background: sand[50], border: `1px solid ${sand[200]}`,
-                  borderLeft: `4px solid ${severityLeft[f.severity] || sand[200]}`,
-                  borderRadius: '12px', padding: '18px 20px'
-                }}>
+                <div key={i}
+                  style={{
+                    background: 'rgba(253, 252, 248, 0.45)',
+                    backdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(253, 252, 248, 0.55)',
+                    borderLeft: `4px solid ${severityLeft[f.severity] || sand[200]}`,
+                    borderRadius: '12px', padding: '18px 20px',
+                    boxShadow: '0 4px 12px rgba(42, 45, 34, 0.01)',
+                    transition: 'all 0.2s ease-in-out'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = olive[300]
+                    e.currentTarget.style.transform = 'translateY(-1.5px)'
+                    e.currentTarget.style.boxShadow = `0 10px 24px ${olive[100]}22`
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = 'rgba(253, 252, 248, 0.55)'
+                    e.currentTarget.style.transform = 'translateY(0)'
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(42, 45, 34, 0.01)'
+                  }}
+                >
                   {/* Top row */}
                   <div style={{ display: 'flex', alignItems: 'flex-start',
                     justifyContent: 'space-between', gap: '12px',

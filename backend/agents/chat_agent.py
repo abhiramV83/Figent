@@ -5,6 +5,8 @@ from backend.utils import safe_llm_call
 CHAT_SYSTEM_PROMPT = """You are Figent's code review assistant. You have just completed 
 an automated code review of a GitHub repository and you know everything about the findings.
 
+The developer you are talking to is: {username}. If they ask who they are or what their name is, tell them their username is {username}.
+
 Repository: {repo_url}
 Files Analyzed: {file_count}
 Total Issues Found: {total_findings}
@@ -49,7 +51,7 @@ INTENT_PROMPT = """Analyze this user message and identify the intent.
     """
 
 
-def build_chat_context(review_result: dict) -> str:
+def build_chat_context(review_result: dict, username: str = "Developer") -> str:
     """Build the system prompt context from a completed review result"""
     findings = review_result.get("all_findings", [])
     final_report = review_result.get("final_report", {})
@@ -74,6 +76,7 @@ def build_chat_context(review_result: dict) -> str:
     issues_opened = len([p for p in pr_urls if p["type"] == "issue"])
 
     system_prompt = CHAT_SYSTEM_PROMPT.format(
+        username=username,
         repo_url=review_result.get("repo_url", "Unknown"),
         file_count=len(review_result.get("files", [])),
         total_findings=len(findings),
@@ -91,10 +94,10 @@ def build_chat_context(review_result: dict) -> str:
 
 
 class ChatAgent:
-    def __init__(self, review_result: dict):
+    def __init__(self, review_result: dict, username: str = "Developer"):
         self.llm = get_llm()
         self.review_result = review_result 
-        self.system_prompt = build_chat_context(review_result)
+        self.system_prompt = build_chat_context(review_result, username)
         self.history = []
 
     def get_finding_by_index(self, index: int) -> dict:
