@@ -34,7 +34,7 @@ export default function Footer() {
         </div>
 
         {/* Links & Copyright */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }} className="footer-right">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }} className="footer-right">
           <div style={{ display: 'flex', gap: '16px' }}>
             <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: sand[600], fontSize: '11.5px', fontWeight: 600 }}>Dashboard</button>
             <button onClick={() => navigate('/history')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: sand[600], fontSize: '11.5px', fontWeight: 600 }}>History</button>
