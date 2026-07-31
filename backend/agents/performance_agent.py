@@ -52,17 +52,20 @@ def performance_agent_node(state: ReviewState) -> ReviewState:
     llm = get_llm()
     all_findings = []
 
-    for file in state["files"]:
-        radon_findings = file.get("tool_results", {}).get("radon_findings", [])
+    for file_info in state.get("files", []):
+        # Ensure required keys exist to avoid KeyError
+        if not all(k in file_info for k in ("content", "path", "language")):
+            continue
+        radon_findings = file_info.get("tool_results", {}).get("radon_findings", [])
 
         # Replace the single prompt call with chunked calls
-        chunks = chunk_file(file["content"])
+        chunks = chunk_file(file_info["content"])
 
         for chunk in chunks:
             prompt = PERFORMANCE_PROMPT.format(
                 radon_findings=json.dumps(radon_findings),
-                file_path=file["path"],
-                language=file["language"],
+                file_path=file_info["path"],
+                language=file_info["language"],
                 code_content=chunk["content"],
                 start_line=chunk["start_line"]
             )
