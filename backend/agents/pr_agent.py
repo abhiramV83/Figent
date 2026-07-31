@@ -46,7 +46,15 @@ def pr_agent_node(state: ReviewState) -> ReviewState:
             continue
 
         print(f"  PR: {finding['file']} line {finding['line']}...")
-        url = handler.create_pr_for_finding(state["repo_url"], finding)
+        repo_url = state.get("repo_url")
+        if not repo_url:
+            logger.error("Missing repo_url in state; skipping PR creation.")
+            continue
+        try:
+            url = handler.create_pr_for_finding(repo_url, finding)
+        except Exception as e:
+            logger.error(f"Error creating PR for {finding.get('file')}:{finding.get('line')}: {e}")
+            continue
         if url:
             pr_urls.append({
                 "type": "pr",
