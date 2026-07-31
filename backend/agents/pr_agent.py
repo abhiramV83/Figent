@@ -38,17 +38,21 @@ def pr_agent_node(state: ReviewState) -> ReviewState:
 
     # Open PRs
     print(f"\nOpening PRs...")
+    # Process PR creations concurrently to reduce latency
+    from concurrent.futures import ThreadPoolExecutor
+    valid_findings = []
     for finding in pr_findings:
         code_fix = finding.get("code_fix", {})
         if not code_fix or "error" in code_fix:
-            # Downgrade to issue if no valid fix
             issue_findings.append(finding)
             continue
-
         print(f"  PR: {finding['file']} line {finding['line']}...")
-        url = handler.create_pr_for_finding(state["repo_url"], finding)
+        valid_findings.append(finding)
+    with ThreadPoolExecutor() as executor:
+        results = executor.map(lambda f: handler.create_pr_for_finding(state["repo_url"], f), valid_findings)
+    for finding, url in zip(valid_findings, results):
         if url:
-            pr_urls.append({
+            pr_urls.append({"url": url, "finding": finding})
                 "type": "pr",
                 "url": url,
                 "file": finding["file"],
