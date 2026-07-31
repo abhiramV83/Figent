@@ -155,13 +155,12 @@ class ChatAgent:
                 filename = file.split("/")[-1].split("\\")[-1]
                 if filename.lower() in message.lower():
                     file_findings = self.get_findings_by_file(filename)
-                    extra_context = f"\nFull findings for {file}:\n"
+                    lines = []
                     for f in file_findings:
-                        extra_context += (
-                            f"- Line {f.get('line','?')} [{f['severity']}]: "
-                            f"{f['issue']}\n  Fix: {f['fix']}\n"
-                            f"  Confidence: {f.get('confidence',0)}%\n"
+                        lines.append(
+                            f"- Line {f.get('line','?')} [{f['severity']}]: {f['issue']}\n  Fix: {f['fix']}\n  Confidence: {f.get('confidence',0)}%"
                         )
+                    extra_context = f"\nFull findings for {file}:\n" + "\n".join(lines)
                     break
 
         elif intent == "pr_query":
