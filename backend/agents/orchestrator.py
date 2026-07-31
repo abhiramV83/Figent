@@ -5,11 +5,15 @@ from backend.tools.static_analysis import analyze_file
 
 def orchestrator_node(state: ReviewState) -> ReviewState:
     """Entry point — clones repo, extracts files, runs static analysis"""
-    handler = RepoHandler()
+    def _clone_repo(handler: RepoHandler, url: str) -> str:
+        return handler.clone(url)
 
-    try:
-        repo_path = handler.clone(state["repo_url"])
-        state["repo_path"] = repo_path
+    repo_url = state.get("repo_url")
+    if not repo_url or not isinstance(repo_url, str) or not repo_url.startswith(("https://", "git@")):
+        raise ValueError("Invalid or missing repository URL")
+    handler = RepoHandler()
+    repo_path = _clone_repo(handler, repo_url)
+    state["repo_path"] = repo_path
 
         files = handler.get_code_files(repo_path)
 
