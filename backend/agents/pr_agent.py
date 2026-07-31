@@ -1,17 +1,21 @@
 from backend.state import ReviewState
 from backend.tools.github_handler import GitHubHandler, decide_action
 
+import logging
+
 def pr_agent_node(state: ReviewState) -> ReviewState:
-    """Opens PRs for high confidence findings, Issues for medium/low"""
-
-    if state.get("error"):
-        print("Skipping GitHub actions — pipeline has errors")
-        return state
-
-    all_findings = state.get("all_findings", [])
+    """Orchestrates PR and issue creation based on findings."""
+    # work on a copy to avoid mutating the original state
+    new_state = dict(state)
+    logger = logging.getLogger(__name__)
+    if new_state.get("error"):
+        logger.info("Skipping GitHub actions — pipeline has errors")
+        return new_state
+    all_findings = new_state.get("all_findings", [])
     if not all_findings:
-        print("No findings to act on")
-        state["pr_urls"] = []
+        logger.info("No findings to act on")
+        new_state["pr_urls"] = []
+        return new_state
         return state
 
     handler = GitHubHandler()
