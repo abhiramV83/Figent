@@ -53,12 +53,13 @@ def quality_agent_node(state: ReviewState) -> ReviewState:
     for file in state["files"]:
         radon_findings = file.get("tool_results", {}).get("radon_findings", [])
 
+        radon_findings_json = json.dumps(radon_findings)
         # Replace the single prompt call with chunked calls
         chunks = chunk_file(file["content"])
 
         for chunk in chunks:
             prompt = QUALITY_PROMPT.format(
-                radon_findings=json.dumps(radon_findings),
+                radon_findings=radon_findings_json,
                 file_path=file["path"],
                 language=file["language"],
                 code_content=chunk["content"],
