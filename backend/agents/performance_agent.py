@@ -79,13 +79,13 @@ def performance_agent_node(state: ReviewState) -> ReviewState:
                     all_findings.append(f)
 
             except json.JSONDecodeError as e:
-                print(f"Could not parse performance agent response for {file['path']} chunk {chunk['start_line']}: {e}")
-                print(f"Raw content preview: {content[:200]}")
+                logging.error(f"Could not parse performance agent response for {file['path']} chunk {chunk['start_line']}: {e}")
+                logging.debug(f"Raw content preview: {content[:200]}")
                 continue
             except Exception as e:
-                print(f"Performance agent error on {file['path']} chunk {chunk['start_line']}: {e}")
+                logging.error(f"Performance agent error on {file['path']} chunk {chunk['start_line']}: {e}")
                 continue
 
-    state["performance_findings"] = all_findings
-    print(f"Performance agent found {len(all_findings)} issues total")
-    return state
+            state["performance_findings"] = all_findings
+            logging.info(f"Performance agent found {len(all_findings)} issues total")
+            return state
