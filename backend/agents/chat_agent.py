@@ -136,12 +136,18 @@ class ChatAgent:
         extra_context = ""
 
         if intent == "severity_query":
-            for sev in ["critical", "high", "medium", "low"]:
-                if sev in message.lower():
-                    findings = self.get_findings_by_severity(sev)
-                    extra_context = f"\nFull {sev} findings:\n"
-                    for f in findings:
-                        extra_context += (
+            return self._build_severity_context(message)
+
+    def _build_severity_context(self, message: str) -> str:
+        """Construct extra context for severity queries."""
+        for sev in ["critical", "high", "medium", "low"]:
+            if sev in message.lower():
+                findings = self.get_findings_by_severity(sev)
+                extra_context = f"\nFull {sev} findings:\n"
+                for f in findings:
+                    extra_context += f"- {f}\n"
+                return extra_context
+        return ""
                             f"- {f['file']} line {f.get('line','?')}: "
                             f"{f['issue']}\n  Fix: {f['fix']}\n"
                         )
