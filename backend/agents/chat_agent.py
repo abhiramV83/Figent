@@ -167,8 +167,10 @@ class ChatAgent:
         elif intent == "pr_query":
             pr_urls = self.review_result.get("pr_urls", [])
             extra_context = "\nFull GitHub actions:\n"
+            _lines = []
             for p in pr_urls:
-                extra_context += f"- [{p['type'].upper()}] {p['file']} line {p['line']}: {p['url']}\n"
+                _lines.append(f"- [{p['type'].upper()}] {p['file']} line {p['line']}: {p['url']}\n")
+            extra_context += "".join(_lines)
 
         elif intent == "specific_finding":
             import re
