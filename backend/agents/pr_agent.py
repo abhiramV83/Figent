@@ -61,8 +61,12 @@ def pr_agent_node(state: ReviewState) -> ReviewState:
     # Open Issues
     print(f"\nOpening Issues...")
     for finding in issue_findings:
-        print(f"  Issue: {finding['file']} line {finding['line']}...")
-        url = handler.create_issue_for_finding(state["repo_url"], finding)
+        # Open issue without exposing file path or line number
+        try:
+            url = handler.create_issue_for_finding(state["repo_url"], finding)
+        except Exception as e:
+            logger.error(f"Failed to create issue for finding: {e}")
+            continue
         if url:
             pr_urls.append({
                 "type": "issue",
