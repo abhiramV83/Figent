@@ -45,16 +45,22 @@ def pr_agent_node(state: ReviewState) -> ReviewState:
             issue_findings.append(finding)
             continue
 
-        print(f"  PR: {finding['file']} line {finding['line']}...")
-        url = handler.create_pr_for_finding(state["repo_url"], finding)
+        file_path = finding.get("file")
+        line_num = finding.get("line")
+        print(f"  PR: {file_path} line {line_num}...")
+        try:
+            url = handler.create_pr_for_finding(state.get("repo_url", ""), finding)
+        except Exception as e:
+            logger.error(f"Failed to create PR for {file_path}:{line_num} - {e}")
+            continue
         if url:
             pr_urls.append({
                 "type": "pr",
                 "url": url,
-                "file": finding["file"],
-                "line": finding["line"],
-                "severity": finding["severity"],
-                "issue": finding["issue"]
+                "file": file_path,
+                "line": line_num,
+                "severity": finding.get("severity"),
+                "issue": finding.get("issue")
             })
             print(f"  [OK] {url}")
 
