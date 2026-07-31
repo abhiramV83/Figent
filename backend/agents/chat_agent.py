@@ -139,12 +139,12 @@ class ChatAgent:
             for sev in ["critical", "high", "medium", "low"]:
                 if sev in message.lower():
                     findings = self.get_findings_by_severity(sev)
-                    extra_context = f"\nFull {sev} findings:\n"
+                    parts = [f"\nFull {sev} findings:\n"]
                     for f in findings:
-                        extra_context += (
-                            f"- {f['file']} line {f.get('line','?')}: "
-                            f"{f['issue']}\n  Fix: {f['fix']}\n"
+                        parts.append(
+                            f"- {f['file']} line {f.get('line','?')}: {f['issue']}\n  Fix: {f['fix']}\n"
                         )
+                    extra_context = "".join(parts)
                     break
 
         elif intent == "file_query":
