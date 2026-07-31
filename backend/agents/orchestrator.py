@@ -18,15 +18,22 @@ def orchestrator_node(state: ReviewState) -> ReviewState:
             full_path = os.path.join(repo_path, f["path"])
             f["tool_results"] = analyze_file(full_path, f["language"])
 
-        state["files"] = files
-        state["error"] = None
-        state["repo_path"] = repo_path
-
-        print(f"Orchestrator complete — {len(files)} files ready for analysis")
-
-    except Exception as e:
-        state["error"] = f"Orchestrator failed: {str(e)}"
-        state["files"] = []
-        print(f"Orchestrator error: {e}")
+        result = {
+            "files": files,
+            "error": None,
+            "repo_path": repo_path,
+        }
+        logger = logging.getLogger(__name__)
+        logger.info(f"Orchestrator complete — {len(files)} files ready for analysis")
+        return result
+    except (IOError, OSError) as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Orchestrator error: {e}")
+        result = {
+            "files": [],
+            "error": f"Orchestrator failed: {e}",
+            "repo_path": None,
+        }
+        return result
 
     return state
