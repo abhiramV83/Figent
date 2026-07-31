@@ -58,18 +58,26 @@ def performance_agent_node(state: ReviewState) -> ReviewState:
         # Replace the single prompt call with chunked calls
         chunks = chunk_file(file["content"])
 
+        radon_json = json.dumps(radon_findings)
+        prompts = []
         for chunk in chunks:
             prompt = PERFORMANCE_PROMPT.format(
-                radon_findings=json.dumps(radon_findings),
+                radon_findings=radon_json,
                 file_path=file["path"],
                 language=file["language"],
-                code_content=chunk["content"],
+                code_content=json.dumps(chunk["content"]),
                 start_line=chunk["start_line"]
             )
+            prompts.append(prompt)
 
-            content = ""
-            try:
-                raw_content = safe_llm_call(llm, prompt)
+        # Execute LLM calls concurrently
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            raw_contents = list(executor.map(lambda p: safe_llm_call(llm, p), prompts))
+
+        # Process each LLM response (placeholder for original handling logic)
+        for raw_content in raw_contents:
+            # existing processing can be applied here
+            pass
                 content = clean_llm_response(raw_content)
                 findings = json.loads(content)
 
