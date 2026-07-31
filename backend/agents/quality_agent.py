@@ -57,11 +57,12 @@ def quality_agent_node(state: ReviewState) -> ReviewState:
         chunks = chunk_file(file["content"])
 
         for chunk in chunks:
+            sanitized_content = sanitize_content(chunk["content"])
             prompt = QUALITY_PROMPT.format(
                 radon_findings=json.dumps(radon_findings),
                 file_path=file["path"],
                 language=file["language"],
-                code_content=chunk["content"],
+                code_content=sanitized_content,
                 start_line=chunk["start_line"]
             )
 
