@@ -151,17 +151,19 @@ class ChatAgent:
             # Extract filename from message
             findings = self.review_result.get("all_findings", [])
             files = list(set(f["file"] for f in findings))
+            lower_message = message.lower()
             for file in files:
                 filename = file.split("/")[-1].split("\\")[-1]
-                if filename.lower() in message.lower():
+                if filename.lower() in lower_message:
                     file_findings = self.get_findings_by_file(filename)
-                    extra_context = f"\nFull findings for {file}:\n"
+                    parts = [f"\nFull findings for {file}:\n"]
                     for f in file_findings:
-                        extra_context += (
+                        parts.append(
                             f"- Line {f.get('line','?')} [{f['severity']}]: "
                             f"{f['issue']}\n  Fix: {f['fix']}\n"
                             f"  Confidence: {f.get('confidence',0)}%\n"
                         )
+                    extra_context = "".join(parts)
                     break
 
         elif intent == "pr_query":
