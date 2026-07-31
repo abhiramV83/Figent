@@ -20,13 +20,13 @@ def orchestrator_node(state: ReviewState) -> ReviewState:
 
         state["files"] = files
         state["error"] = None
-        state["repo_path"] = repo_path
+        # state["repo_path"] already set earlier; no need to assign again
 
-        print(f"Orchestrator complete — {len(files)} files ready for analysis")
+        logger.info("Orchestrator complete — %d files ready for analysis", len(files))
 
-    except Exception as e:
-        state["error"] = f"Orchestrator failed: {str(e)}"
+        except (OSError, RuntimeError) as e:
+        logger.error("Orchestrator error: %s", e)
+        state["error"] = "Orchestrator failed"
         state["files"] = []
-        print(f"Orchestrator error: {e}")
 
     return state
