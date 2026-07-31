@@ -7,13 +7,23 @@ def orchestrator_node(state: ReviewState) -> ReviewState:
     """Entry point — clones repo, extracts files, runs static analysis"""
     handler = RepoHandler()
 
+    # Validate presence of repo_url
+    repo_url = state.get("repo_url")
+    if not repo_url:
+        raise ValueError("Missing 'repo_url' in ReviewState")
+
+    # Basic safety check for the URL (scheme and netloc)
+    if not _is_safe_url(repo_url):
+        raise ValueError(f"Invalid repository URL: {repo_url}")
+
     try:
-        repo_path = handler.clone(state["repo_url"])
+        repo_path = _clone_repository(handler, repo_url)
         state["repo_path"] = repo_path
 
         files = handler.get_code_files(repo_path)
 
         # Attach tool results to each file
+        # (remaining logic unchanged)
         for f in files:
             full_path = os.path.join(repo_path, f["path"])
             f["tool_results"] = analyze_file(full_path, f["language"])
