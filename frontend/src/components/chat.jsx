@@ -83,10 +83,18 @@ export default function Chat({ token, reviewId, sessionId, onNewSession, height 
   const [loadingStatus, setLoadingStatus] = useState('Thinking...')
   const messagesContainerRef = useRef(null)
 
-  // Auto-scroll internally inside the chat container (does not scroll the page viewport)
+  // Auto-scroll internally inside the chat container smoothly (does not scroll the page viewport)
   useEffect(() => {
     if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+      const timer = setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTo({
+            top: messagesContainerRef.current.scrollHeight,
+            behavior: 'smooth'
+          })
+        }
+      }, 80)
+      return () => clearTimeout(timer)
     }
   }, [messages, loading])
 

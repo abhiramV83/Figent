@@ -224,7 +224,17 @@ export default function Review({ token, onAuthError }) {
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id)
+                if (tab.id === 'chat') {
+                  setTimeout(() => {
+                    window.scrollTo({
+                      top: document.documentElement.scrollHeight,
+                      behavior: 'smooth'
+                    })
+                  }, 120)
+                }
+              }}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 padding: '10px 18px', fontSize: '13px', fontWeight: 700,

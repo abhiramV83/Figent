@@ -12,24 +12,34 @@ export default function Landing() {
       backgroundImage: 'radial-gradient(rgba(122, 133, 90, 0.16) 1.5px, transparent 0)',
       backgroundSize: '24px 24px',
       fontFamily: 'Outfit, Plus Jakarta Sans, sans-serif',
-      position: 'relative',
-      overflowX: 'hidden'
+      position: 'relative'
     }}>
-      {/* Floating Ambient Glowing Blobs */}
+      {/* Background Blobs Layer */}
       <div style={{
-        position: 'absolute', top: '-10%', left: '-10%',
-        width: '50vw', height: '50vw', borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(122, 133, 90, 0.1) 0%, rgba(245, 243, 236, 0) 70%)',
-        zIndex: 0, pointerEvents: 'none', filter: 'blur(60px)',
-        animation: 'drift-bg 22s infinite alternate ease-in-out'
-      }} />
-      <div style={{
-        position: 'absolute', bottom: '-15%', right: '-10%',
-        width: '60vw', height: '60vw', borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(185, 195, 160, 0.12) 0%, rgba(245, 243, 236, 0) 70%)',
-        zIndex: 0, pointerEvents: 'none', filter: 'blur(80px)',
-        animation: 'drift-bg-rev 28s infinite alternate ease-in-out'
-      }} />
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        pointerEvents: 'none',
+        zIndex: 0
+      }}>
+        <div style={{
+          position: 'absolute', top: '-10%', left: '-10%',
+          width: '50vw', height: '50vw', borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(122, 133, 90, 0.1) 0%, rgba(245, 243, 236, 0) 70%)',
+          filter: 'blur(60px)',
+          animation: 'drift-bg 22s infinite alternate ease-in-out'
+        }} />
+        <div style={{
+          position: 'absolute', bottom: '-15%', right: '-10%',
+          width: '60vw', height: '60vw', borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(185, 195, 160, 0.12) 0%, rgba(245, 243, 236, 0) 70%)',
+          filter: 'blur(80px)',
+          animation: 'drift-bg-rev 28s infinite alternate ease-in-out'
+        }} />
+      </div>
       
       {/* Navbar overlay for Landing */}
       <nav style={{ background: sand[50], borderBottom: `1px solid ${sand[200]}` }}>
