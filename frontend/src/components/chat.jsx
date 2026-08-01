@@ -76,7 +76,7 @@ function renderMarkdown(text) {
   })
 }
 
-export default function Chat({ token, reviewId, sessionId, onNewSession }) {
+export default function Chat({ token, reviewId, sessionId, onNewSession, height = '520px' }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -157,7 +157,7 @@ export default function Chat({ token, reviewId, sessionId, onNewSession }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height }}>
       
       {/* Session Control Header */}
       <div style={{ 

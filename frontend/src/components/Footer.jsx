@@ -42,6 +42,7 @@ export default function Footer() {
             <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: sand[600], fontSize: '11.5px', fontWeight: 600 }}>Dashboard</button>
             <button onClick={() => navigate('/history')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: sand[600], fontSize: '11.5px', fontWeight: 600 }}>History</button>
             <button onClick={() => navigate('/profile')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: sand[600], fontSize: '11.5px', fontWeight: 600 }}>Profile</button>
+            <button onClick={() => navigate('/support')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: sand[600], fontSize: '11.5px', fontWeight: 600 }}>Support</button>
           </div>
           <span style={{ color: sand[400], fontSize: '11px', fontWeight: 500 }} className="footer-copyright">
             &copy; {new Date().getFullYear()} Figent. All rights reserved.

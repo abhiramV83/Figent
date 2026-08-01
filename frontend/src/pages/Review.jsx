@@ -97,10 +97,19 @@ export default function Review({ token, onAuthError }) {
   ]
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 4rem)', background: 'transparent' }}
-      className="pt-10 pb-16 px-6"
+    <div style={{ 
+      minHeight: activeTab === 'chat' ? 'calc(100vh - 140px)' : 'calc(100vh - 4rem)', 
+      background: 'transparent',
+      ...(activeTab === 'chat' ? { display: 'flex', flexDirection: 'column' } : {})
+    }}
+      className={`pt-10 px-6 ${activeTab === 'chat' ? 'pb-2' : 'pb-16'}`}
     >
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-5xl mx-auto" style={activeTab === 'chat' ? {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%'
+      } : undefined}>
 
         {/* Back link */}
         <button onClick={() => navigate('/history')}
@@ -389,8 +398,18 @@ export default function Review({ token, onAuthError }) {
 
         {/* Chat tab */}
         {activeTab === 'chat' && sessionId && (
-          <div style={{ background: sand[50], border: `1px solid ${sand[200]}`, borderRadius: '14px', padding: '24px' }}>
-            <Chat token={token} reviewId={id} sessionId={sessionId} onNewSession={setSessionId} />
+          <div style={{ 
+            background: sand[50], 
+            border: `1px solid ${sand[200]}`, 
+            borderRadius: '14px', 
+            padding: '24px',
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: '400px',
+            marginBottom: '10px'
+          }}>
+            <Chat token={token} reviewId={id} sessionId={sessionId} onNewSession={setSessionId} height="100%" />
           </div>
         )}
 

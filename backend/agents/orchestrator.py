@@ -8,10 +8,21 @@ def orchestrator_node(state: ReviewState) -> ReviewState:
     handler = RepoHandler()
 
     try:
-        repo_path = handler.clone(state["repo_url"])
+        branch = state.get("branch")
+        selected_files = state.get("selected_files")
+
+        repo_path = handler.clone(state["repo_url"], branch=branch)
         state["repo_path"] = repo_path
 
         files = handler.get_code_files(repo_path)
+
+        # Filter files if selected_files list is provided
+        if selected_files:
+            normalized_selected = {p.replace("\\", "/").strip("/") for p in selected_files}
+            files = [
+                f for f in files
+                if f["path"].replace("\\", "/").strip("/") in normalized_selected
+            ]
 
         # Attach tool results to each file
         for f in files:

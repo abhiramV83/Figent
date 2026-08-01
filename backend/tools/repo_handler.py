@@ -29,7 +29,7 @@ class RepoHandler:
             self.clone_dir = clone_dir
         os.makedirs(self.clone_dir, exist_ok=True)
 
-    def clone(self, repo_url: str) -> str:
+    def clone(self, repo_url: str, branch: str = None) -> str:
         """Clone repo and return local path"""
         # Normalize GitHub URL to base repository path
         parts = repo_url.rstrip("/").split("/")
@@ -44,7 +44,11 @@ class RepoHandler:
             shutil.rmtree(target_path, onexc=_force_remove)
 
         print(f"Cloning {repo_url}...")
-        Repo.clone_from(repo_url, target_path)
+        if branch:
+            print(f"Cloning branch: {branch}...")
+            Repo.clone_from(repo_url, target_path, branch=branch)
+        else:
+            Repo.clone_from(repo_url, target_path)
         print(f"Cloned to {target_path}")
         return target_path
 

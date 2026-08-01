@@ -20,3 +20,5 @@ class ReviewState(TypedDict):
     final_report: Dict
     pr_urls: List[str]           # opened PR links
     error: Optional[str]
+    branch: Optional[str]
+    selected_files: Optional[List[str]]

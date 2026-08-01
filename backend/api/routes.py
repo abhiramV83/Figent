@@ -11,6 +11,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPExce
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from typing import Optional, List
 from pydantic import BaseModel
 from backend.db.models import Review
 
@@ -32,6 +33,34 @@ active_review_progress = {}
 # In-memory store for currently running reviews stop events
 # (review_id → asyncio.Event)
 active_stop_events = {}
+
+
+class ReviewTaskManager:
+    def __init__(self):
+        self.queues = {} # review_id -> list of asyncio.Queue
+
+    def register_listener(self, review_id: int, queue: asyncio.Queue):
+        if review_id not in self.queues:
+            self.queues[review_id] = []
+        self.queues[review_id].append(queue)
+
+    def unregister_listener(self, review_id: int, queue: asyncio.Queue):
+        if review_id in self.queues:
+            if queue in self.queues[review_id]:
+                self.queues[review_id].remove(queue)
+            if not self.queues[review_id]:
+                del self.queues[review_id]
+
+    def publish_event(self, review_id: int, event: dict):
+        if review_id not in active_review_progress:
+            active_review_progress[review_id] = []
+        active_review_progress[review_id].append(event)
+        
+        if review_id in self.queues:
+            for q in self.queues[review_id]:
+                q.put_nowait(event)
+
+task_manager = ReviewTaskManager()
 
 # ── Password Hashing Helpers ─────────────────────────────
 
@@ -83,6 +112,8 @@ def get_current_user(auth: HTTPAuthorizationCredentials = Depends(security_schem
 
 class ReviewRequest(BaseModel):
     repo_url: str
+    branch: Optional[str] = None
+    selected_files: Optional[list[str]] = None
 
 class ChatRequest(BaseModel):
     message: str
@@ -108,6 +139,12 @@ class ResetPasswordRequest(BaseModel):
     email: str
     otp: str
     password: str
+
+class SupportTicketRequest(BaseModel):
+    name: str
+    email: str
+    subject: str
+    message: str
 
 class GitHubAuthRequest(BaseModel):
     code: str
@@ -744,7 +781,7 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
 @router.get("/auth/me")
 def get_me(user = Depends(get_current_user)):
     """Verify session token and retrieve user details"""
-    return {"id": user.id, "username": user.username}
+    return {"id": user.id, "username": user.username, "email": user.email}
 
 
 def get_client_ip(request: Request) -> str:
@@ -937,6 +974,146 @@ def validate_github_repo(repo_url: str) -> bool:
         return True
 
 
+def parse_github_url(repo_url: str) -> tuple[str, str] | None:
+    """Parse owner and repo name from GitHub URL"""
+    import re
+    match = re.search(r'github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/|$)', repo_url)
+    if not match:
+        return None
+    return match.group(1), match.group(2)
+
+
+@router.get("/repo/branches")
+def get_repo_branches(repo_url: str, user = Depends(get_current_user)):
+    """Fetch all branches of a public GitHub repository"""
+    parsed = parse_github_url(repo_url)
+    if not parsed:
+        raise HTTPException(status_code=400, detail="Invalid GitHub repository URL")
+    
+    owner, repo = parsed
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/branches"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Figent-App"
+    }
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"token {token}"
+        
+    try:
+        import requests
+        res = requests.get(api_url, headers=headers, timeout=10)
+        if res.status_code != 200:
+            raise HTTPException(status_code=res.status_code, detail=f"Failed to fetch branches from GitHub: {res.text}")
+        branches = [b["name"] for b in res.json()]
+        return {"branches": branches}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error checking branches: {str(e)}")
+
+
+@router.get("/repo/files")
+def get_repo_files(repo_url: str, branch: str = "main", user = Depends(get_current_user)):
+    """Fetch supported code files of a repository and branch using GitHub's recursive tree API"""
+    parsed = parse_github_url(repo_url)
+    if not parsed:
+        raise HTTPException(status_code=400, detail="Invalid GitHub repository URL")
+    
+    owner, repo = parsed
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Figent-App"
+    }
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"token {token}"
+        
+    try:
+        import requests
+        res = requests.get(api_url, headers=headers, timeout=15)
+        if res.status_code != 200:
+            raise HTTPException(status_code=res.status_code, detail=f"Failed to fetch file tree from GitHub: {res.text}")
+            
+        tree_data = res.json()
+        tree = tree_data.get("tree", [])
+        
+        from backend.tools.repo_handler import SUPPORTED_EXTENSIONS, SKIP_DIRS
+        
+        supported_files = []
+        for item in tree:
+            if item.get("type") == "blob":
+                path = item.get("path", "")
+                parts = path.split("/")
+                if any(skip in parts for skip in SKIP_DIRS):
+                    continue
+                if parts[-1].startswith("test_") or parts[-1].startswith("conftest"):
+                    continue
+                ext = os.path.splitext(parts[-1])[1]
+                if ext in SUPPORTED_EXTENSIONS:
+                    supported_files.append({
+                        "path": path,
+                        "size_bytes": item.get("size", 0),
+                        "language": ext.replace(".", "")
+                    })
+        return {"files": supported_files}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error listing files: {str(e)}")
+
+
+@router.get("/repo/compare")
+def compare_repo_branches(repo_url: str, branch: str, user = Depends(get_current_user)):
+    """Compare target branch with default branch to list modified files"""
+    parsed = parse_github_url(repo_url)
+    if not parsed:
+        raise HTTPException(status_code=400, detail="Invalid GitHub repository URL")
+    
+    owner, repo = parsed
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Figent-App"
+    }
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"token {token}"
+        
+    import requests
+    
+    # 1. Fetch repository default branch
+    repo_api_url = f"https://api.github.com/repos/{owner}/{repo}"
+    try:
+        repo_res = requests.get(repo_api_url, headers=headers, timeout=10)
+        if repo_res.status_code != 200:
+            raise HTTPException(status_code=repo_res.status_code, detail="Failed to fetch repository info from GitHub")
+        default_branch = repo_res.json().get("default_branch", "main")
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error checking default branch: {str(e)}")
+        
+    # If the target branch is the same as the default branch, return empty modifications list
+    if branch == default_branch:
+        return {"modified_files": [], "default_branch": default_branch}
+        
+    # 2. Call compare API
+    compare_api_url = f"https://api.github.com/repos/{owner}/{repo}/compare/{default_branch}...{branch}"
+    try:
+        compare_res = requests.get(compare_api_url, headers=headers, timeout=15)
+        if compare_res.status_code != 200:
+            raise HTTPException(status_code=compare_res.status_code, detail=f"Failed to fetch comparison from GitHub: {compare_res.text}")
+        
+        compare_data = compare_res.json()
+        modified_files = [f["filename"] for f in compare_data.get("files", [])]
+        return {"modified_files": modified_files, "default_branch": default_branch}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error comparing branches: {str(e)}")
+
+
 # ── Review Routes ────────────────────────────────────────
 
 @router.post("/review")
@@ -1059,110 +1236,32 @@ def stop_review(review_id: int, db: Session = Depends(get_db), user = Depends(ge
 
     return {"message": "Review is not currently running"}
 
-# ── WebSocket — Live Streaming ───────────────────────────
-
-@router.websocket("/ws/review")
-async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
-    """
-    WebSocket endpoint for streaming review results.
-    Client sends: {"repo_url": "https://github.com/...", "token": "..."}
-    Server streams: agent completion events as they happen
-    """
-    await websocket.accept()
-
-    review = None
-    listen_task = None
-    async def send_event(event_data):
-        if review and review.id in active_review_progress:
-            active_review_progress[review.id].append(event_data)
-        try:
-            await websocket.send_json(event_data)
-        except Exception:
-            pass
-
+async def run_review_pipeline_background(review_id: int, repo_url: str, branch: Optional[str], selected_files: Optional[list[str]], username: str):
+    """Executes the review graph in a detached async background task and publishes progress events"""
+    from backend.db.database import SessionLocal
+    db = SessionLocal()
+    
+    # 1. Initialize historical progress tracking
+    active_review_progress[review_id] = []
+    
+    task_manager.publish_event(review_id, {
+        "type": "started",
+        "review_id": review_id,
+        "message": "Review started",
+        "agent": "started"
+    })
+    
     try:
-        # Receive repo URL and token from client
-        data = await websocket.receive_json()
-        repo_url = data.get("repo_url", "").strip()
-        token = data.get("token")
-
-        if not token:
-            await send_event({"type": "error", "message": "Authentication token required"})
-            await websocket.close(code=4001)
-            return
-
-        user = crud.get_user_by_token(db, token)
-        if not user or (user.token_expires and user.token_expires < datetime.utcnow()):
-            await send_event({"type": "error", "message": "Invalid or expired token"})
-            await websocket.close(code=4001)
-            return
-
-        if not repo_url:
-            await send_event({"type": "error", "message": "repo_url required"})
-            await websocket.close(code=4002)
-            return
-
-        # Normalize repo URL — strip subpaths like /issues, /pulls, /tree/...
-        import re as _re
-        repo_url = _re.sub(r'(github\.com/[^/]+/[^/]+)(/.*)?$', r'\1', repo_url)
-        # Validate repository URL
-        if not validate_github_repo(repo_url):
-            await send_event({
-                "type": "error",
-                "message": "The specified repository URL is invalid or private. Please verify that it is a public GitHub repository."
-            })
-            await websocket.close(code=4003)
-            return
-
-        # Enforce IP-based rate limit of 1 review for guest sessions
-        client_ip = None
-        x_forwarded_for = websocket.headers.get("x-forwarded-for")
-        if x_forwarded_for:
-            client_ip = x_forwarded_for.split(",")[0].strip()
-        else:
-            client_ip = websocket.client.host if websocket.client else "127.0.0.1"
-
-        if user.username.startswith("guest_") and client_ip not in ("127.0.0.1", "::1", "localhost"):
-            existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
-            if existing_reviews_count >= 1:
-                await send_event({
-                    "type": "error",
-                    "message": "Free tier limit reached for guest sessions. Please sign in with GitHub to unlock unlimited code audits."
-                })
-                await websocket.close(code=4029)
-                return
-
-        # Create review record linked to user
-        review = crud.create_review(db, repo_url, owner_id=user.id, ip_address=client_ip)
-        
-        # Initialize stop event and store in active_stop_events registry
+        # Update review status to running in DB
+        review = crud.get_review(db, review_id)
+        if review:
+            review.status = "running"
+            db.commit()
+            
         stop_event = asyncio.Event()
-        active_stop_events[review.id] = stop_event
+        active_stop_events[review_id] = stop_event
 
-        # Background listener task for WebSocket stop messages
-        async def listen_for_stop():
-            try:
-                while True:
-                    msg_data = await websocket.receive_json()
-                    if msg_data.get("type") == "stop":
-                        stop_event.set()
-                        break
-            except Exception:
-                pass
-
-        listen_task = asyncio.create_task(listen_for_stop())
-
-        # Initialize in-memory progress tracking
-        active_review_progress[review.id] = []
-        
-        await send_event({
-            "type": "started",
-            "review_id": review.id,
-            "message": "Review started",
-            "agent": "started"
-        })
-
-        # Build and stream the graph
+        # 2. Build and run the graph
         app = build_graph()
         initial_state = {
             "repo_url": repo_url,
@@ -1174,10 +1273,11 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
             "all_findings": [],
             "final_report": {},
             "pr_urls": [],
-            "error": None
+            "error": None,
+            "branch": branch,
+            "selected_files": selected_files
         }
 
-        # Accumulate full state across all node outputs — LangGraph streams deltas
         accumulated_state = dict(initial_state)
         final_result = None
 
@@ -1193,95 +1293,20 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
         stream_iter = await asyncio.to_thread(run_stream)
 
         while True:
-            # Intercept step if stop event is set
             if stop_event.is_set():
-                break
-
-            try:
-                event = await asyncio.to_thread(safe_next, stream_iter)
-                if event is None:
-                    break
-            except Exception as e:
-                raise e
-
-            node_name = list(event.keys())[0]
-            node_output = event[node_name]
-            # Merge node output into accumulated state so we always have full context
-            accumulated_state.update(node_output)
-            final_result = accumulated_state
-
-            if node_name == "orchestrator":
-                await send_event({
-                    "type": "agent_complete",
-                    "agent": "orchestrator",
-                    "message": f"Repository cloned — {len(node_output.get('files', []))} files ready",
-                    "files_count": len(node_output.get("files", []))
+                task_manager.publish_event(review_id, {
+                    "type": "stopped",
+                    "message": "Analysis stopped by user.",
+                    "agent": "stopped"
                 })
-
-            elif node_name == "quality_agent":
-                findings = node_output.get("quality_findings", [])
-                await send_event({
-                    "type": "agent_complete",
-                    "agent": "quality_agent",
-                    "message": f"Quality analysis done — {len(findings)} findings",
-                    "findings": findings
-                })
-
-            elif node_name == "security_agent":
-                findings = node_output.get("security_findings", [])
-                await send_event({
-                    "type": "agent_complete",
-                    "agent": "security_agent",
-                    "message": f"Security analysis done — {len(findings)} findings",
-                    "findings": findings
-                })
-
-            elif node_name == "performance_agent":
-                findings = node_output.get("performance_findings", [])
-                await send_event({
-                    "type": "agent_complete",
-                    "agent": "performance_agent",
-                    "message": f"Performance analysis done — {len(findings)} findings",
-                    "findings": findings
-                })
-
-            elif node_name == "synthesizer":
-                report = node_output.get("final_report", {})
-                await send_event({
-                    "type": "agent_complete",
-                    "agent": "synthesizer",
-                    "message": f"Synthesis done — {report.get('total', 0)} unique findings",
-                    "report": report,
-                    "all_findings": node_output.get("all_findings", [])
-                })
-                # Send keepalive after synthesizer — PR agent takes a while
-                await send_event({
-                    "type": "keepalive",
-                    "message": "Opening GitHub PRs and Issues — this may take a minute..."
-                })
-
-            elif node_name == "pr_agent":
-                pr_urls = node_output.get("pr_urls", [])
-                await send_event({
-                    "type": "agent_complete",
-                    "agent": "pr_agent",
-                    "message": f"GitHub actions done",
-                    "pr_urls": pr_urls
-                })
-
-        # Process final results (collating if stopped early)
-        if stop_event.is_set():
-            await send_event({
-                "type": "stopped",
-                "message": "Analysis stopped by user."
-            })
-            if final_result:
+                
+                # Collate stopped findings
                 all_findings = []
-                all_findings.extend(final_result.get("quality_findings", []))
-                all_findings.extend(final_result.get("security_findings", []))
-                all_findings.extend(final_result.get("performance_findings", []))
-                final_result["all_findings"] = all_findings
-                final_result["final_report"] = {
+                all_findings.extend(accumulated_state.get("quality_findings", []))
+                all_findings.extend(accumulated_state.get("security_findings", []))
+                all_findings.extend(accumulated_state.get("performance_findings", []))
+                accumulated_state["all_findings"] = all_findings
+                accumulated_state["final_report"] = {
                     "total": len(all_findings),
                     "by_severity": {
                         "critical": len([f for f in all_findings if f.get("severity") == "critical"]),
@@ -1290,63 +1315,439 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
                         "low": len([f for f in all_findings if f.get("severity") == "low"]),
                     }
                 }
-            else:
-                final_result = dict(initial_state)
+                final_result = accumulated_state
+                break
 
-        # Save to DB
+            try:
+                event = await asyncio.to_thread(safe_next, stream_iter)
+                if event is None:
+                    break
+            except Exception as e:
+                # Handle pipeline exception
+                review = crud.get_review(db, review_id)
+                if review:
+                    review.status = "failed"
+                    review.error = str(e)
+                    db.commit()
+                task_manager.publish_event(review_id, {
+                    "type": "error",
+                    "message": f"Analysis failed: {str(e)}",
+                    "agent": "error"
+                })
+                return
+
+            node_name = list(event.keys())[0]
+            node_output = event[node_name]
+            accumulated_state.update(node_output)
+            final_result = accumulated_state
+
+            if node_name == "orchestrator":
+                task_manager.publish_event(review_id, {
+                    "type": "agent_complete",
+                    "agent": "orchestrator",
+                    "message": f"Repository cloned — {len(node_output.get('files', []))} files ready",
+                    "files_count": len(node_output.get("files", []))
+                })
+
+            elif node_name == "quality_agent":
+                findings = node_output.get("quality_findings", [])
+                task_manager.publish_event(review_id, {
+                    "type": "agent_complete",
+                    "agent": "quality_agent",
+                    "message": f"Quality analysis done — {len(findings)} findings",
+                    "findings": findings
+                })
+
+            elif node_name == "security_agent":
+                findings = node_output.get("security_findings", [])
+                task_manager.publish_event(review_id, {
+                    "type": "agent_complete",
+                    "agent": "security_agent",
+                    "message": f"Security analysis done — {len(findings)} findings",
+                    "findings": findings
+                })
+
+            elif node_name == "performance_agent":
+                findings = node_output.get("performance_findings", [])
+                task_manager.publish_event(review_id, {
+                    "type": "agent_complete",
+                    "agent": "performance_agent",
+                    "message": f"Performance analysis done — {len(findings)} findings",
+                    "findings": findings
+                })
+
+            elif node_name == "synthesizer":
+                report = node_output.get("final_report", {})
+                task_manager.publish_event(review_id, {
+                    "type": "agent_complete",
+                    "agent": "synthesizer",
+                    "message": f"Synthesis done — {report.get('total', 0)} unique findings",
+                    "report": report,
+                    "all_findings": node_output.get("all_findings", [])
+                })
+                task_manager.publish_event(review_id, {
+                    "type": "keepalive",
+                    "message": "Opening GitHub PRs and Issues — this may take a minute..."
+                })
+
+            elif node_name == "pr_agent":
+                pr_urls = node_output.get("pr_urls", [])
+                task_manager.publish_event(review_id, {
+                    "type": "agent_complete",
+                    "agent": "pr_agent",
+                    "message": "GitHub actions done",
+                    "pr_urls": pr_urls
+                })
+
+        # Save to DB on completion
         if final_result:
-            # Re-instantiate database session to avoid connection dropouts after long runs
             try:
                 db.close()
             except Exception:
                 pass
-            
-            from backend.db.database import SessionLocal
             db = SessionLocal()
-            
-            crud.complete_review(db, review.id, final_result)
+            crud.complete_review(db, review_id, final_result)
+            active_chat_agents[review_id] = ChatAgent(final_result, username=username)
 
-            # Initialize chat agent for this review
-            active_chat_agents[review.id] = ChatAgent(final_result, username=user.username)
+            # Publish final complete event
+            task_manager.publish_event(review_id, {
+                "type": "complete",
+                "review_id": review_id,
+                "message": "Review complete"
+            })
 
-        await send_event({
-            "type": "complete",
-            "review_id": review.id,
-            "message": "Review complete"
+    except Exception as e:
+        review = crud.get_review(db, review_id)
+        if review:
+            review.status = "failed"
+            review.error = str(e)
+            db.commit()
+        task_manager.publish_event(review_id, {
+            "type": "error",
+            "message": f"Pipeline failure: {str(e)}",
+            "agent": "error"
         })
-        
+    finally:
+        db.close()
+        active_stop_events.pop(review_id, None)
+
+
+# ── WebSocket — Live Streaming ───────────────────────────
+
+@router.websocket("/ws/review")
+async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
+    """
+    WebSocket endpoint for streaming review results.
+    Client sends: {"repo_url": "https://github.com/...", "token": "...", "branch": "...", "selected_files": [...]}
+    Server returns all past events and streams live progress from background tasks.
+    """
+    await websocket.accept()
+
+    try:
+        # Receive payload from client
+        data = await websocket.receive_json()
+        repo_url = data.get("repo_url", "").strip()
+        token = data.get("token")
+        branch = data.get("branch")
+        selected_files = data.get("selected_files")
+
+        if not token:
+            await websocket.send_json({"type": "error", "message": "Authentication token required"})
+            await websocket.close(code=4001)
+            return
+
+        user = crud.get_user_by_token(db, token)
+        if not user or (user.token_expires and user.token_expires < datetime.utcnow()):
+            await websocket.send_json({"type": "error", "message": "Invalid or expired token"})
+            await websocket.close(code=4001)
+            return
+
+        if not repo_url:
+            await websocket.send_json({"type": "error", "message": "repo_url required"})
+            await websocket.close(code=4002)
+            return
+
+        # Normalize repo URL
+        import re as _re
+        repo_url = _re.sub(r'(github\.com/[^/]+/[^/]+)(/.*)?$', r'\1', repo_url)
+        if not validate_github_repo(repo_url):
+            await websocket.send_json({
+                "type": "error",
+                "message": "The specified repository URL is invalid or private. Please verify that it is a public GitHub repository."
+            })
+            await websocket.close(code=4003)
+            return
+
+        # Enforce rate limit for guest sessions
+        client_ip = None
+        x_forwarded_for = websocket.headers.get("x-forwarded-for")
+        if x_forwarded_for:
+            client_ip = x_forwarded_for.split(",")[0].strip()
+        else:
+            client_ip = websocket.client.host if websocket.client else "127.0.0.1"
+
+        if user.username.startswith("guest_") and client_ip not in ("127.0.0.1", "::1", "localhost"):
+            existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
+            if existing_reviews_count >= 1:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Free tier limit reached for guest sessions. Please sign in with GitHub to unlock unlimited code audits."
+                })
+                await websocket.close(code=4029)
+                return
+
+        # Check if there is an active running/pending review for this repo url
+        existing_running = db.query(Review).filter(
+            Review.repo_url == repo_url,
+            Review.owner_id == user.id,
+            Review.status.in_(["pending", "running"])
+        ).order_by(Review.created_at.desc()).first()
+
+        if existing_running:
+            review_id = existing_running.id
+        else:
+            # Create review record and launch background task runner
+            review = crud.create_review(db, repo_url, owner_id=user.id, ip_address=client_ip)
+            review_id = review.id
+            asyncio.create_task(run_review_pipeline_background(
+                review_id, repo_url, branch, selected_files, user.username
+            ))
+
+        # Register event queue listener for this review ID
+        queue = asyncio.Queue()
+        task_manager.register_listener(review_id, queue)
+
+        # Background listener task for WebSocket cancellation messages
+        async def listen_for_stop():
+            try:
+                while True:
+                    msg_data = await websocket.receive_json()
+                    if msg_data.get("type") == "stop":
+                        stop_event = active_stop_events.get(review_id)
+                        if stop_event:
+                            stop_event.set()
+                        break
+            except Exception:
+                pass
+
+        listen_task = asyncio.create_task(listen_for_stop())
+
+        try:
+            # 1. Send all historical events that already occurred
+            past_events = active_review_progress.get(review_id, [])
+            for event in past_events:
+                await websocket.send_json(event)
+                
+            # 2. Wait and stream live events from queue
+            while True:
+                event = await queue.get()
+                await websocket.send_json(event)
+                if event.get("type") in ("complete", "error", "stopped"):
+                    break
+        finally:
+            task_manager.unregister_listener(review_id, queue)
+            if not listen_task.done():
+                listen_task.cancel()
 
     except WebSocketDisconnect:
-        print("Client disconnected")
-        # Keep background progress retained so returning client can poll it
+        print("Client disconnected from review session")
     except Exception as e:
-        # Re-instantiate database session on error to prevent PendingRollbackError
         try:
-            db.rollback()
-        except Exception:
-            pass
-        try:
-            db.close()
-            from backend.db.database import SessionLocal
-            db = SessionLocal()
+            await websocket.send_json({"type": "error", "message": f"Session error: {str(e)}"})
         except Exception:
             pass
 
-        await send_event({
-            "type": "error",
-            "message": str(e)
-        })
-        if review:
-            try:
-                crud.fail_review(db, review.id, str(e))
-            except Exception as db_err:
-                print(f"Error writing failure log to database: {db_err}")
-    finally:
-        if review:
-            active_stop_events.pop(review.id, None)
-            active_review_progress.pop(review.id, None)
-        if listen_task and not listen_task.done():
-            listen_task.cancel()
+def send_support_ticket_email(name: str, email: str, subject: str, message: str):
+    """Send support ticket details to the administrator email via SMTP in a beautiful HTML template"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import logging
+    logger = logging.getLogger("uvicorn.error")
+
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = os.getenv("SMTP_PORT")
+    smtp_user = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+    smtp_from = os.getenv("SMTP_FROM") or smtp_user
+    support_recipient = "figentbyabhiram@gmail.com"
+
+    if not smtp_host or not smtp_user or not smtp_pass:
+        logger.info(f"\n[EMAIL SIMULATION] Support ticket from {name} ({email}):\nSubject: {subject}\nMessage: {message}\n")
+        return True
+
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['From'] = f'"{name} via Figent" <{smtp_from}>'
+        msg['To'] = support_recipient
+        msg['Subject'] = f"[Figent Support] {subject}"
+        msg['Reply-To'] = email
+
+        # HTML Email template matches the visual design system card layout
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f3ec;
+            margin: 0;
+            padding: 40px 20px;
+        }}
+        .container {{
+            max-width: 580px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border: 1px solid #e7e5dc;
+            border-radius: 24px;
+            padding: 44px;
+            box-shadow: 0 4px 20px rgba(42, 45, 34, 0.02);
+        }}
+        .header {{
+            text-align: center;
+            margin-bottom: 32px;
+        }}
+        .logo {{
+            font-size: 26px;
+            font-weight: 850;
+            color: #526322;
+            margin: 0 0 8px;
+            letter-spacing: -0.5px;
+        }}
+        .title {{
+            font-size: 22px;
+            font-weight: 800;
+            color: #1c1d1a;
+            margin: 0 0 24px;
+            letter-spacing: -0.4px;
+        }}
+        .text {{
+            font-size: 14.5px;
+            color: #4a4c44;
+            line-height: 1.6;
+            margin: 0 0 20px;
+            font-weight: 500;
+        }}
+        .details-box {{
+            background-color: #faf9f6;
+            border: 1px dashed #dcdad0;
+            border-radius: 16px;
+            padding: 24px;
+            margin: 24px 0;
+        }}
+        .detail-item {{
+            margin-bottom: 16px;
+            font-size: 14px;
+        }}
+        .detail-item:last-child {{
+            margin-bottom: 0;
+        }}
+        .label {{
+            font-weight: 800;
+            color: #7a855a;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: block;
+            margin-bottom: 4px;
+        }}
+        .value {{
+            font-weight: 600;
+            color: #1c1d1a;
+            font-size: 14.5px;
+        }}
+        .message-content {{
+            font-family: inherit;
+            white-space: pre-wrap;
+            background-color: #fcfbfa;
+            border: 1px solid #e7e5dc;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 8px;
+            color: #2a2c26;
+            font-size: 13.5px;
+            line-height: 1.5;
+            font-weight: 500;
+        }}
+        .footer {{
+            text-align: center;
+            margin-top: 36px;
+            font-size: 11px;
+            color: #7a7c74;
+            line-height: 1.5;
+            font-weight: 500;
+            border-top: 1px solid #f2f0e8;
+            padding-top: 24px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Figent</div>
+            <h1 class="title">New Support Ticket</h1>
+        </div>
+        
+        <p class="text">Hello Admin,</p>
+        <p class="text">A user has submitted a new inquiry through the Developer Support Desk. The details of the request are outlined below:</p>
+        
+        <div class="details-box">
+            <div class="detail-item">
+                <span class="label">SENDER NAME</span>
+                <span class="value">{name}</span>
+            </div>
+            <div class="detail-item">
+                <span class="label">SENDER EMAIL</span>
+                <span class="value">{email}</span>
+            </div>
+            <div class="detail-item">
+                <span class="label">SUBJECT</span>
+                <span class="value">{subject}</span>
+            </div>
+            <div class="detail-item">
+                <span class="label">MESSAGE</span>
+                <div class="message-content">{message}</div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            This is an automated message from the Figent Support Desk.<br>
+            &copy; 2026 Figent. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>
+"""
+        msg.attach(MIMEText(html_body, 'html'))
+
+        server = smtplib.SMTP(smtp_host, int(smtp_port or 587))
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(smtp_from, [support_recipient], msg.as_string())
+        server.quit()
+        logger.info(f"Support ticket from {email} successfully sent to {support_recipient}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send support ticket email: {e}")
+        return False
+
+
+@router.post("/support/ticket")
+def submit_support_ticket(request: SupportTicketRequest, background_tasks: BackgroundTasks, user = Depends(get_current_user)):
+    """Submit a support ticket and email it to the administrator inbox"""
+    if user.email and request.email != user.email:
+        raise HTTPException(status_code=403, detail="Forbidden: You must submit the ticket using your registered email address")
+
+    background_tasks.add_task(
+        send_support_ticket_email,
+        request.name,
+        request.email,
+        request.subject,
+        request.message
+    )
+    return {"message": "Support ticket submitted successfully"}
+
 
 # ── Chat Routes ──────────────────────────────────────────
 

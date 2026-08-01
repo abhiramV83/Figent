@@ -14,6 +14,7 @@ import Navbar from './components/Navbar'
 import Callback from './pages/Callback'
 import Profile from './pages/Profile'
 import Footer from './components/Footer'
+import Support from './pages/Support'
 
 export default function App() {
   // Trigger rebuild to inject newly added Vercel environment variables
@@ -118,6 +119,7 @@ export default function App() {
         <Route path="/review/:id" element={<ProtectedRoute><Review token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
         <Route path="/history" element={<ProtectedRoute><History token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
+        <Route path="/support" element={<ProtectedRoute><Support token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
         <Route path="/auth/callback" element={<Callback onLogin={(tok, uname) => handleLogin(tok, uname)} />} />
 
         {/* Fallback */}

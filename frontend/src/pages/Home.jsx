@@ -31,6 +31,15 @@ export default function Home({ token, onAuthError }) {
   const [runningReview, setRunningReview] = useState(null)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [branches, setBranches] = useState([])
+  const [selectedBranch, setSelectedBranch] = useState('main')
+  const [loadingBranches, setLoadingBranches] = useState(false)
+  const [filesList, setFilesList] = useState([])
+  const [loadingFiles, setLoadingFiles] = useState(false)
+  const [checkedFiles, setCheckedFiles] = useState([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [defaultBranch, setDefaultBranch] = useState('main')
+  const [loadingDiff, setLoadingDiff] = useState(false)
   const navigate  = useNavigate()
   const statusRef = useRef(status)
   statusRef.current = status
@@ -123,6 +132,123 @@ export default function Home({ token, onAuthError }) {
     return () => clearInterval(pollInterval)
   }, [status, runningReview, token, navigate, onAuthError])
 
+  const validateGithubUrl = (url) => {
+    const reg = /github\.com\/([^/]+)\/([^/]+)/
+    return reg.test(url)
+  }
+
+  // Fetch branches when valid repo URL is entered
+  useEffect(() => {
+    if (!token) return
+    const url = repoUrl.trim()
+    if (!validateGithubUrl(url)) {
+      setBranches([])
+      setFilesList([])
+      setCheckedFiles([])
+      return
+    }
+
+    setLoadingBranches(true)
+    setErrorMessage('')
+    
+    axios.get(`${API_BASE}/api/repo/branches?repo_url=${encodeURIComponent(url)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => {
+      const branchNames = res.data.branches || []
+      setBranches(branchNames)
+      setLoadingBranches(false)
+      
+      let defaultBranchName = 'main'
+      if (branchNames.length > 0) {
+        if (branchNames.includes('main')) defaultBranchName = 'main'
+        else if (branchNames.includes('master')) defaultBranchName = 'master'
+        else defaultBranchName = branchNames[0]
+      }
+      setSelectedBranch(defaultBranchName)
+      setDefaultBranch(defaultBranchName)
+    })
+    .catch(err => {
+      setLoadingBranches(false)
+      setBranches([])
+    })
+  }, [repoUrl, token])
+
+  // Fetch files when repo URL or branch changes
+  useEffect(() => {
+    if (!token) return
+    const url = repoUrl.trim()
+    if (!validateGithubUrl(url) || !selectedBranch) {
+      setFilesList([])
+      setCheckedFiles([])
+      return
+    }
+
+    setLoadingFiles(true)
+    axios.get(`${API_BASE}/api/repo/files?repo_url=${encodeURIComponent(url)}&branch=${encodeURIComponent(selectedBranch)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(async (res) => {
+      const files = res.data.files || []
+      setFilesList(files)
+      setLoadingFiles(false)
+      
+      // Check if we need to do branch comparison (if not the default branch)
+      if (selectedBranch !== defaultBranch) {
+        setLoadingDiff(true)
+        try {
+          const compareRes = await axios.get(`${API_BASE}/api/repo/compare?repo_url=${encodeURIComponent(url)}&branch=${encodeURIComponent(selectedBranch)}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+          const modified = compareRes.data.modified_files || []
+          // Normalize paths for matching
+          const normalizedModified = modified.map(p => p.replace(/\\/g, '/').toLowerCase())
+          
+          const matchingPaths = files
+            .filter(f => {
+              const sizeKb = (f.size_bytes || 0) / 1024
+              if (sizeKb > 100) return false // Skip large files
+              const normalizedPath = f.path.replace(/\\/g, '/').toLowerCase()
+              return normalizedModified.includes(normalizedPath)
+            })
+            .map(f => f.path)
+
+          if (matchingPaths.length > 0) {
+            setCheckedFiles(matchingPaths)
+          } else {
+            // Fallback to checking first 5 small files
+            const paths = files
+              .filter(f => (f.size_bytes || 0) / 1024 <= 100)
+              .slice(0, 5)
+              .map(f => f.path)
+            setCheckedFiles(paths)
+          }
+        } catch (err) {
+          console.error("Failed to fetch branch comparison, falling back to default pre-selection", err)
+          const paths = files
+            .filter(f => (f.size_bytes || 0) / 1024 <= 100)
+            .slice(0, 5)
+            .map(f => f.path)
+          setCheckedFiles(paths)
+        } finally {
+          setLoadingDiff(false)
+        }
+      } else {
+        // For default branch, pre-select first 5 small files
+        const paths = files
+          .filter(f => (f.size_bytes || 0) / 1024 <= 100)
+          .slice(0, 5)
+          .map(f => f.path)
+        setCheckedFiles(paths)
+      }
+    })
+    .catch(err => {
+      setLoadingFiles(false)
+      setFilesList([])
+      setCheckedFiles([])
+    })
+  }, [repoUrl, selectedBranch, defaultBranch, token])
+
   const handleGithubRedirect = () => {
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID
     if (!clientId) {
@@ -168,7 +294,12 @@ export default function Home({ token, onAuthError }) {
     wsRef.current = ws
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ repo_url: repoUrl, token }))
+      ws.send(JSON.stringify({ 
+        repo_url: repoUrl, 
+        token,
+        branch: selectedBranch,
+        selected_files: checkedFiles
+      }))
       setStatus('streaming')
     }
 
@@ -421,7 +552,7 @@ export default function Home({ token, onAuthError }) {
                 }}>
                   Repository URL
                 </label>
-                <div className="input-group" style={{ display: 'flex', gap: '10px' }}>
+                <div className="input-group" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                   <input
                     style={{
                       flex: 1, background: sand[100],
@@ -434,7 +565,6 @@ export default function Home({ token, onAuthError }) {
                     placeholder="https://github.com/username/repo"
                     value={repoUrl}
                     onChange={e => setRepoUrl(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && startReview()}
                     onFocus={e => {
                       e.target.style.borderColor = olive[500]
                       e.target.style.boxShadow = `0 0 0 3px ${olive[100]}`
@@ -444,22 +574,322 @@ export default function Home({ token, onAuthError }) {
                       e.target.style.boxShadow = 'none'
                     }}
                   />
-                  <button
-                    onClick={startReview}
-                    style={{
-                      background: olive[600], color: '#f7f9eb', border: 'none',
-                      borderRadius: '10px', padding: '12px 24px', fontSize: '13px',
-                      fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                      transition: 'background-color 0.15s, transform 0.1s',
-                      boxShadow: `0 2px 8px ${olive[400]}44`
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = olive[700]; e.currentTarget.style.transform = 'translateY(-1px)' }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = olive[600]; e.currentTarget.style.transform = 'translateY(0)' }}
-                  >
-                    Analyze
-                  </button>
                 </div>
-                <p style={{ color: sand[500], fontSize: '11px', marginTop: '10px', textAlign: 'center', fontWeight: 600 }}>
+
+                {loadingBranches && (
+                  <div style={{ color: sand[500], fontSize: '12px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: 14, height: 14, border: `2px solid ${sand[200]}`, borderTopColor: olive[600], borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                    Loading branches from GitHub...
+                  </div>
+                )}
+
+                {!loadingBranches && branches.length > 0 && (
+                  <div style={{
+                    animation: 'fadeIn 0.3s ease-out',
+                    background: 'rgba(253, 252, 248, 0.4)',
+                    border: `1px solid ${sand[200]}`,
+                    borderRadius: '14px',
+                    padding: '20px',
+                    marginBottom: '20px'
+                  }}>
+                    {/* Branch Selection */}
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{
+                        display: 'block', color: sand[800], fontSize: '11px',
+                        fontWeight: 800, letterSpacing: '0.05em',
+                        textTransform: 'uppercase', marginBottom: '8px'
+                      }}>
+                        Select Target Branch
+                      </label>
+                      <select
+                        value={selectedBranch}
+                        onChange={e => setSelectedBranch(e.target.value)}
+                        style={{
+                          width: '100%', padding: '10px 14px', background: sand[100],
+                          border: `1px solid ${sand[200]}`, borderRadius: '10px',
+                          fontSize: '13px', color: sand[950], fontWeight: 600, outline: 'none',
+                          appearance: 'none', backgroundImage: `url("data:image/svg+xml;utf8,<svg fill='none' stroke='${encodeURIComponent(sand[600])}' stroke-width='2' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'></path></svg>")`,
+                          backgroundRepeat: 'no-repeat', backgroundPosition: 'right 14px center', backgroundSize: '14px'
+                        }}
+                        onFocus={e => e.target.style.borderColor = olive[500]}
+                        onBlur={e => e.target.style.borderColor = sand[200]}
+                      >
+                        {branches.map(b => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* File Selection */}
+                    <div>
+                      {/* Search and Bulk Selection Controls */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <div style={{ flex: 1, minWidth: '180px' }}>
+                          <input
+                            type="text"
+                            placeholder="Search files..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            style={{
+                              width: '100%', padding: '8px 12px', background: sand[100],
+                              border: `1px solid ${sand[200]}`, borderRadius: '8px',
+                              fontSize: '12px', color: sand[950], fontWeight: 600, outline: 'none'
+                            }}
+                            onFocus={e => e.target.style.borderColor = olive[500]}
+                            onBlur={e => e.target.style.borderColor = sand[200]}
+                          />
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const visibleFiles = filesList.filter(f => {
+                                const matchesSearch = f.path.toLowerCase().includes(searchTerm.toLowerCase())
+                                const isTooLarge = (f.size_bytes || 0) / 1024 > 100
+                                return matchesSearch && !isTooLarge
+                              }).map(f => f.path)
+                              
+                              setCheckedFiles(prev => {
+                                const newChecked = [...prev]
+                                visibleFiles.forEach(p => {
+                                  if (!newChecked.includes(p)) newChecked.push(p)
+                                })
+                                return newChecked
+                              })
+                            }}
+                            style={{
+                              background: 'none', border: `1px solid ${sand[300]}`,
+                              color: sand[700], borderRadius: '6px', padding: '6px 12px',
+                              fontSize: '11px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = olive[400]; e.currentTarget.style.color = olive[700] }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = sand[300]; e.currentTarget.style.color = sand[700] }}
+                          >
+                            Select All
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const visibleFiles = filesList.filter(f => f.path.toLowerCase().includes(searchTerm.toLowerCase())).map(f => f.path)
+                              setCheckedFiles(prev => prev.filter(p => !visibleFiles.includes(p)))
+                            }}
+                            style={{
+                              background: 'none', border: `1px solid ${sand[300]}`,
+                              color: sand[700], borderRadius: '6px', padding: '6px 12px',
+                              fontSize: '11px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#fca5a5'; e.currentTarget.style.color = '#b91c1c' }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = sand[300]; e.currentTarget.style.color = sand[700] }}
+                          >
+                            Clear Visible
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <label style={{
+                          display: 'block', color: sand[800], fontSize: '11px',
+                          fontWeight: 800, letterSpacing: '0.05em',
+                          textTransform: 'uppercase'
+                        }}>
+                          Select Files to Audit
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {loadingDiff && (
+                            <span style={{ fontSize: '11px', color: sand[500], fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <div style={{ width: 10, height: 10, border: `1.5px solid ${sand[200]}`, borderTopColor: olive[600], borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                              Checking changed files...
+                            </span>
+                          )}
+                          <span style={{
+                            fontSize: '11px', fontWeight: 800,
+                            color: checkedFiles.length > 5 ? '#b91c1c' : olive[700],
+                            background: checkedFiles.length > 5 ? '#fef2f2' : olive[100],
+                            border: checkedFiles.length > 5 ? '1px solid #fca5a5' : `1px solid ${olive[200]}`,
+                            borderRadius: '6px', padding: '2px 8px'
+                          }}>
+                            Selected: {checkedFiles.length} / 5 limit
+                          </span>
+                        </div>
+                      </div>
+
+                      {loadingFiles ? (
+                        <div style={{ color: sand[500], fontSize: '12px', padding: '16px 0', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: 14, height: 14, border: `2px solid ${sand[200]}`, borderTopColor: olive[600], borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                          Loading repository file structure...
+                        </div>
+                      ) : filesList.length === 0 ? (
+                        <div style={{ color: sand[500], fontSize: '12px', padding: '12px', border: `1px dashed ${sand[200]}`, borderRadius: '8px', textAlign: 'center', fontWeight: 600 }}>
+                          No supported code files found (.py, .js, .ts, .java, .go)
+                        </div>
+                      ) : (
+                        <div style={{
+                          maxHeight: '200px', overflowY: 'auto',
+                          border: `1px solid ${sand[200]}`, borderRadius: '10px',
+                          background: sand[100], padding: '6px 0'
+                        }}>
+                          {filesList
+                            .filter(f => f.path.toLowerCase().includes(searchTerm.toLowerCase()))
+                            .map(f => {
+                              const isChecked = checkedFiles.includes(f.path)
+                              const sizeKb = (f.size_bytes || 0) / 1024
+                              const isTooLarge = sizeKb > 100
+                              
+                              return (
+                                <label key={f.path} style={{
+                                  display: 'flex', alignItems: 'center', gap: '10px',
+                                  padding: '8px 14px', 
+                                  cursor: isTooLarge ? 'not-allowed' : 'pointer',
+                                  transition: 'background-color 0.15s',
+                                  userSelect: 'none',
+                                  opacity: isTooLarge ? 0.6 : 1
+                                }}
+                                className="file-item-row"
+                                onMouseEnter={e => { if(!isTooLarge) e.currentTarget.style.backgroundColor = 'rgba(107, 124, 36, 0.04)' }}
+                                onMouseLeave={e => { if(!isTooLarge) e.currentTarget.style.backgroundColor = 'transparent' }}
+                                title={isTooLarge ? 'File size exceeds 100KB limit' : f.path}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked && !isTooLarge}
+                                    disabled={isTooLarge}
+                                    onChange={() => {
+                                      if (isChecked) {
+                                        setCheckedFiles(prev => prev.filter(p => p !== f.path))
+                                      } else {
+                                        setCheckedFiles(prev => [...prev, f.path])
+                                      }
+                                    }}
+                                    style={{
+                                      accentColor: olive[600],
+                                      width: '16px', height: '16px', cursor: isTooLarge ? 'not-allowed' : 'pointer'
+                                    }}
+                                  />
+                                  <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                      fontSize: '12.5px', fontFamily: 'monospace',
+                                      color: sand[950], fontWeight: 600,
+                                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                                    }}>
+                                      {f.path}
+                                    </span>
+                                    
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                      {isTooLarge && (
+                                        <span style={{
+                                          fontSize: '9.5px', fontWeight: 800,
+                                          color: '#991b1b', background: '#fef2f2', border: '1px solid #fca5a5',
+                                          borderRadius: '4px', padding: '1px 5px'
+                                        }}>
+                                          Too Large ({Math.round(sizeKb)}KB)
+                                        </span>
+                                      )}
+                                      
+                                      <span style={{
+                                        fontSize: '10px', fontWeight: 800, textTransform: 'uppercase',
+                                        color: sand[500], background: sand[200], borderRadius: '4px',
+                                        padding: '1px 5px'
+                                      }}>
+                                        {f.language}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </label>
+                              )
+                            })}
+                          
+                          {filesList.filter(f => f.path.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+                            <div style={{ color: sand[500], fontSize: '12px', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+                              No files match your search criteria.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Constraint warnings */}
+                {checkedFiles.length > 5 && (
+                  <div style={{
+                    background: '#fef2f2', border: '1px solid #fca5a5',
+                    borderRadius: '12px', padding: '14px 16px', marginBottom: '20px',
+                    display: 'flex', alignItems: 'flex-start', gap: '10px',
+                    animation: 'fadeIn 0.2s ease-out'
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: '#b91c1c', flexShrink: 0, marginTop: '2px' }}>
+                      <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                        stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <div>
+                      <div style={{ color: '#991b1b', fontSize: '13px', fontWeight: 800, marginBottom: '2px' }}>
+                        Free Tier Limit Exceeded
+                      </div>
+                      <div style={{ color: '#7f1d1d', fontSize: '12px', fontWeight: 600, lineHeight: 1.5 }}>
+                        You have selected {checkedFiles.length} files. The free tier is limited to 5 files per audit.
+                        Please <button onClick={() => navigate('/support')} style={{ background: 'none', border: 'none', padding: 0, textDecoration: 'underline', color: olive[700], fontWeight: 800, cursor: 'pointer' }}>contact support</button> or select fewer files to run the audit.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {checkedFiles.length === 0 && branches.length > 0 && (
+                  <div style={{
+                    background: '#fffbeb', border: '1px solid #fef3c7',
+                    borderRadius: '12px', padding: '14px 16px', marginBottom: '20px',
+                    display: 'flex', alignItems: 'flex-start', gap: '10px'
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }}>
+                      <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                        stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <div>
+                      <div style={{ color: '#92400e', fontSize: '13px', fontWeight: 800, marginBottom: '2px' }}>
+                        No Files Selected
+                      </div>
+                      <div style={{ color: '#78350f', fontSize: '12px', fontWeight: 600, lineHeight: 1.5 }}>
+                        Please select at least 1 file to initiate the audit workflow.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Audit Action Button */}
+                <button
+                  disabled={!repoUrl.trim() || checkedFiles.length === 0 || checkedFiles.length > 5 || loadingBranches || loadingFiles}
+                  onClick={startReview}
+                  style={{
+                    width: '100%',
+                    background: (!repoUrl.trim() || checkedFiles.length === 0 || checkedFiles.length > 5 || loadingBranches || loadingFiles) ? sand[200] : olive[600],
+                    color: (!repoUrl.trim() || checkedFiles.length === 0 || checkedFiles.length > 5 || loadingBranches || loadingFiles) ? sand[500] : '#f7f9eb',
+                    border: 'none',
+                    borderRadius: '12px',
+                    padding: '14px 24px',
+                    fontSize: '13.5px',
+                    fontWeight: 750,
+                    cursor: (!repoUrl.trim() || checkedFiles.length === 0 || checkedFiles.length > 5 || loadingBranches || loadingFiles) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s',
+                    boxShadow: (!repoUrl.trim() || checkedFiles.length === 0 || checkedFiles.length > 5 || loadingBranches || loadingFiles) ? 'none' : `0 4px 12px ${olive[400]}33`
+                  }}
+                  onMouseEnter={e => {
+                    if (repoUrl.trim() && checkedFiles.length > 0 && checkedFiles.length <= 5 && !loadingBranches && !loadingFiles) {
+                      e.currentTarget.style.backgroundColor = olive[700]
+                      e.currentTarget.style.transform = 'translateY(-1px)'
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (repoUrl.trim() && checkedFiles.length > 0 && checkedFiles.length <= 5 && !loadingBranches && !loadingFiles) {
+                      e.currentTarget.style.backgroundColor = olive[600]
+                      e.currentTarget.style.transform = 'translateY(0)'
+                    }
+                  }}
+                >
+                  Audit Selected Files
+                </button>
+
+                <p style={{ color: sand[500], fontSize: '11px', marginTop: '12px', textAlign: 'center', fontWeight: 600 }}>
                   Public repositories only — no credentials required.
                 </p>
               </div>
