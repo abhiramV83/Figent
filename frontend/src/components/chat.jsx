@@ -81,7 +81,14 @@ export default function Chat({ token, reviewId, sessionId, onNewSession, height 
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [loadingStatus, setLoadingStatus] = useState('Thinking...')
-  const bottomRef = useRef(null)
+  const messagesContainerRef = useRef(null)
+
+  // Auto-scroll internally inside the chat container (does not scroll the page viewport)
+  useEffect(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  }, [messages, loading])
 
   useEffect(() => {
     if (!sessionId || !token) return
@@ -92,9 +99,7 @@ export default function Chat({ token, reviewId, sessionId, onNewSession, height 
     .catch(err => console.error(err))
   }, [sessionId, token])
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+
 
   useEffect(() => {
     if (!loading) return
@@ -187,8 +192,11 @@ export default function Chat({ token, reviewId, sessionId, onNewSession, height 
       </div>
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px',
-        paddingRight: '4px', marginBottom: '16px' }}>
+      <div 
+        ref={messagesContainerRef}
+        style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px',
+          paddingRight: '4px', marginBottom: '16px' }}
+      >
 
         {messages.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -270,7 +278,7 @@ export default function Chat({ token, reviewId, sessionId, onNewSession, height 
             </div>
           </div>
         )}
-        <div ref={bottomRef} />
+        {/* Internally scrolled bottom container */}
       </div>
 
       {/* Input */}

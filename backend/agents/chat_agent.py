@@ -32,6 +32,11 @@ Be specific — reference exact file names, line numbers, and findings.
 If asked why a PR wasn't opened, explain the confidence threshold system.
 If asked about a specific finding, give full details.
 Keep responses concise and actionable.
+
+STRICT SCOPE GUARDRAILS:
+- You are strictly limited to discussing the codebase review findings, code quality, security issues, performance optimizations, refactoring recommendations, and related software engineering topics for this specific repository.
+- Under no circumstances should you answer off-topic queries (such as general knowledge, cooking, recipes, life advice, entertainment, etc.).
+- If the user asks an off-topic question, politely refuse: "I can only answer questions related to the code review findings and software engineering of this analyzed repository."
 """
 
 INTENT_PROMPT = """Analyze this user message and identify the intent.

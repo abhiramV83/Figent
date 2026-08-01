@@ -403,10 +403,9 @@ export default function Review({ token, onAuthError }) {
             border: `1px solid ${sand[200]}`, 
             borderRadius: '14px', 
             padding: '24px',
-            flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            minHeight: '400px',
+            height: '580px',
             marginBottom: '10px'
           }}>
             <Chat token={token} reviewId={id} sessionId={sessionId} onNewSession={setSessionId} height="100%" />
