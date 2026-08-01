@@ -1,17 +1,22 @@
 from backend.state import ReviewState
 from backend.tools.github_handler import GitHubHandler, decide_action
 
-def pr_agent_node(state: ReviewState) -> ReviewState:
-    """Opens PRs for high confidence findings, Issues for medium/low"""
-
+def _validate_state(state: ReviewState) -> bool:
+    """Return True if processing should stop due to errors or missing findings."""
     if state.get("error"):
         print("Skipping GitHub actions — pipeline has errors")
-        return state
-
+        return True
     all_findings = state.get("all_findings", [])
     if not all_findings:
         print("No findings to act on")
         state["pr_urls"] = []
+        return True
+    return False
+
+def pr_agent_node(state: ReviewState) -> ReviewState:
+    """Opens PRs for high confidence findings, Issues for medium/low"""
+    if _validate_state(state):
+        return state
         return state
 
     handler = GitHubHandler()
