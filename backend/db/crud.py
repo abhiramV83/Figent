@@ -122,35 +122,11 @@ def get_user_by_token(db: Session, token: str) -> User:
 
 def create_user(db: Session, username: str, password_hash: str, email: str = None) -> User:
     """Create a new user"""
-    user = User(username=username, password_hash=password_hash, email=email)
+    user = User(username=username, password_hash=password_hash, email=email, is_verified=True)
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
-
-def update_user_verification_otp(db: Session, user: User, otp: str, expires_at: datetime) -> User:
-    """Store verification OTP and expiration"""
-    user.verification_otp = otp
-    user.verification_otp_expires = expires_at
-    db.commit()
-    db.refresh(user)
-    return user
-
-def verify_user_email(db: Session, user: User) -> User:
-    """Mark user as verified and clear OTP fields"""
-    user.is_verified = True
-    user.verification_otp = None
-    user.verification_otp_expires = None
-    db.commit()
-    db.refresh(user)
-    return user
-
-def get_user_by_verification_otp(db: Session, email: str, otp: str) -> User:
-    """Find a user by email and matching verification OTP"""
-    return db.query(User).filter(
-        User.email == email,
-        User.verification_otp == otp
-    ).first()
 
 def update_user_token(db: Session, user: User, token: str, expires_at: datetime) -> User:
     """Update a user's active session token"""
@@ -163,27 +139,6 @@ def update_user_token(db: Session, user: User, token: str, expires_at: datetime)
 def get_user_by_email(db: Session, email: str) -> User:
     """Find a user by email"""
     return db.query(User).filter(User.email == email).first()
-
-def get_user_by_reset_token(db: Session, token: str) -> User:
-    """Find a user by reset token"""
-    return db.query(User).filter(User.reset_token == token).first()
-
-def update_user_reset_token(db: Session, user: User, token: str, expires_at: datetime) -> User:
-    """Update user's password reset token"""
-    user.reset_token = token
-    user.reset_token_expires = expires_at
-    db.commit()
-    db.refresh(user)
-    return user
-
-def update_user_password(db: Session, user: User, password_hash: str) -> User:
-    """Update user's hashed password and clear reset token"""
-    user.password_hash = password_hash
-    user.reset_token = None
-    user.reset_token_expires = None
-    db.commit()
-    db.refresh(user)
-    return user
 
 def get_user_reviews(db: Session, user_id: int) -> list:
     """Get all past reviews for a specific user"""

@@ -6,9 +6,6 @@ import Home from './pages/Home'
 import Review from './pages/Review'
 import History from './pages/History'
 import Login from './pages/Login'
-import Register from './pages/Register'
-import ForgotPassword from './pages/ForgotPassword'
-import ResetPassword from './pages/ResetPassword'
 import Landing from './pages/Landing'
 import Navbar from './components/Navbar'
 import Callback from './pages/Callback'
@@ -101,18 +98,6 @@ export default function App() {
         <Route
           path="/login"
           element={token ? <Navigate to="/" replace /> : <Login onLogin={(tok, uname) => handleLogin(tok, uname)} />}
-        />
-        <Route
-          path="/register"
-          element={token ? <Navigate to="/" replace /> : <Register onLogin={(tok, uname) => handleLogin(tok, uname)} />}
-        />
-        <Route
-          path="/forgot-password"
-          element={token ? <Navigate to="/" replace /> : <ForgotPassword />}
-        />
-        <Route
-          path="/reset-password"
-          element={token ? <Navigate to="/" replace /> : <ResetPassword />}
         />
 
         {/* Authenticated / Welcome routes */}
