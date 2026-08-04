@@ -21,13 +21,15 @@ export default function Callback({ onLogin }) {
   }, [errorMsg])
 
   useEffect(() => {
+    const code = searchParams.get('code')
     const existingToken = localStorage.getItem('token')
-    if (existingToken) {
+    
+    // If we have an existing token but no new code, we can redirect directly
+    if (existingToken && !code) {
       navigate('/', { replace: true })
       return
     }
 
-    const code = searchParams.get('code')
     if (!code) {
       setErrorMsg('No authorization code provided by GitHub')
       setTimeout(() => navigate('/login', { replace: true }), 3500)

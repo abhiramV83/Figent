@@ -297,6 +297,8 @@ export default function Home({ token, username, onAuthError }) {
   const handleStop = async () => {
     if (!runningReview?.id) return
     setStopping(true)
+    
+    // 1. Send stop signal to backend
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
         wsRef.current.send(JSON.stringify({ type: 'stop' }))
@@ -312,6 +314,20 @@ export default function Home({ token, username, onAuthError }) {
         console.error('Failed to stop review via REST', err)
       }
     }
+
+    // 2. Instantly update UI state and close WebSocket on client
+    setTimeout(() => {
+      setStopping(false)
+      setStatus('error')
+      setErrorMessage('Analysis cancelled by user.')
+      setActiveAgentKey(null)
+      if (wsRef.current) {
+        try {
+          wsRef.current.close()
+        } catch (e) {}
+        wsRef.current = null
+      }
+    }, 100)
   }
 
   const startReview = () => {

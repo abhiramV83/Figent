@@ -1496,11 +1496,8 @@ def send_audit_completed_email(username: str, email: str, review_id: int, repo_u
             margin: 28px 0;
         }}
         .detail-item {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #f2f0e8;
+            padding: 12px 0;
+            border-bottom: 1px solid #edebe4;
         }}
         .detail-item:last-child {{
             border-bottom: none;
@@ -1510,20 +1507,20 @@ def send_audit_completed_email(username: str, email: str, review_id: int, repo_u
             padding-top: 0;
         }}
         .label {{
-            font-size: 10px;
+            display: block;
+            font-size: 10.5px;
             font-weight: 800;
             color: #8f8b80;
             text-transform: uppercase;
             letter-spacing: 0.08em;
+            margin-bottom: 4px;
         }}
         .value {{
-            font-size: 13.5px;
+            display: block;
+            font-size: 14px;
             font-weight: 700;
             color: #3b422e;
-            max-width: 280px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            word-break: break-all;
         }}
         .btn {{
             display: block;
