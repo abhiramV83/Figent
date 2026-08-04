@@ -23,6 +23,13 @@ const PIPELINE_STEPS = [
 ]
 
 export default function Home({ token, username, onAuthError }) {
+  // Initialize persistent device ID
+  let deviceId = localStorage.getItem('figent_device_id')
+  if (!deviceId) {
+    deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+    localStorage.setItem('figent_device_id', deviceId)
+  }
+
   const [repoUrl, setRepoUrl]           = useState('')
   const [status, setStatus]             = useState('idle')
   const [errorMessage, setErrorMessage] = useState('')
@@ -346,7 +353,8 @@ export default function Home({ token, username, onAuthError }) {
         repo_url: repoUrl, 
         token,
         branch: selectedBranch,
-        selected_files: checkedFiles
+        selected_files: checkedFiles,
+        device_id: deviceId
       }))
       setStatus('streaming')
     }

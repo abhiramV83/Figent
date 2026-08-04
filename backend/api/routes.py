@@ -6,7 +6,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, BackgroundTasks, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -98,6 +98,7 @@ class ReviewRequest(BaseModel):
     repo_url: str
     branch: Optional[str] = None
     selected_files: Optional[list[str]] = None
+    device_id: Optional[str] = None
 
 class ChatRequest(BaseModel):
     message: str
@@ -464,8 +465,8 @@ def compare_repo_branches(repo_url: str, branch: str, user = Depends(get_current
 # ── Review Routes ────────────────────────────────────────
 
 @router.post("/review")
-async def start_review(request: Request, review_req: ReviewRequest, db: Session = Depends(get_db), user = Depends(get_current_user)):
-    """Start a new code review — returns review_id immediately with IP-based rate limiting for guests"""
+async def start_review(request: Request, response: Response, review_req: ReviewRequest, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    """Start a new code review — returns review_id immediately with cookie-based rate limiting for guests"""
     # Validate the repository URL first
     if not validate_github_repo(review_req.repo_url):
         raise HTTPException(
@@ -476,12 +477,29 @@ async def start_review(request: Request, review_req: ReviewRequest, db: Session 
     client_ip = get_client_ip(request)
     
     if user.username.startswith("guest_"):
-        existing_reviews_count = db.query(Review).filter(Review.owner_id == user.id).count()
-        if existing_reviews_count >= 1:
+        has_audited_cookie = request.cookies.get("device_has_audited") == "true"
+        existing_reviews_count = 0
+        if review_req.device_id:
+            existing_reviews_count = db.query(Review).filter(
+                (Review.owner_id == user.id) | (Review.ip_address == review_req.device_id)
+            ).count()
+        else:
+            existing_reviews_count = db.query(Review).filter(Review.owner_id == user.id).count()
+
+        if has_audited_cookie or existing_reviews_count >= 1:
             raise HTTPException(
                 status_code=429,
                 detail="Free tier limit reached for guest sessions. Please sign in with GitHub to unlock unlimited code audits."
             )
+        
+        response.set_cookie(
+            key="device_has_audited",
+            value="true",
+            max_age=31536000,  # 1 year
+            httponly=True,
+            samesite="lax",
+            secure=True
+        )
     
     # Determine report_mode
     report_mode = True
@@ -491,7 +509,7 @@ async def start_review(request: Request, review_req: ReviewRequest, db: Session 
         if user and user.username and not user.username.startswith("guest_") and owner.lower() == user.username.lower():
             report_mode = False
 
-    review = crud.create_review(db, review_req.repo_url, owner_id=user.id, ip_address=client_ip, report_mode=report_mode)
+    review = crud.create_review(db, review_req.repo_url, owner_id=user.id, ip_address=review_req.device_id or client_ip, report_mode=report_mode)
     return {"review_id": review.id, "status": "started"}
 
 
@@ -827,6 +845,7 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
         token = data.get("token")
         branch = data.get("branch")
         selected_files = data.get("selected_files")
+        device_id = data.get("device_id")
 
         if not token:
             await websocket.send_json({"type": "error", "message": "Authentication token required"})
@@ -841,7 +860,7 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
 
         if not repo_url:
             await websocket.send_json({"type": "error", "message": "repo_url required"})
-            await websocket.close(code=4002)
+            await websocket.close(code=402)
             return
 
         # Normalize repo URL
@@ -864,8 +883,16 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
             client_ip = websocket.client.host if websocket.client else "127.0.0.1"
 
         if user.username.startswith("guest_"):
-            existing_reviews_count = db.query(Review).filter(Review.owner_id == user.id).count()
-            if existing_reviews_count >= 1:
+            has_audited_cookie = websocket.cookies.get("device_has_audited") == "true"
+            existing_reviews_count = 0
+            if device_id:
+                existing_reviews_count = db.query(Review).filter(
+                    (Review.owner_id == user.id) | (Review.ip_address == device_id)
+                ).count()
+            else:
+                existing_reviews_count = db.query(Review).filter(Review.owner_id == user.id).count()
+
+            if has_audited_cookie or existing_reviews_count >= 1:
                 await websocket.send_json({
                     "type": "error",
                     "message": "Free tier limit reached for guest sessions. Please sign in with GitHub to unlock unlimited code audits."
@@ -892,7 +919,7 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
             review_id = existing_running.id
         else:
             # Create review record and launch background task runner
-            review = crud.create_review(db, repo_url, owner_id=user.id, ip_address=client_ip, report_mode=report_mode)
+            review = crud.create_review(db, repo_url, owner_id=user.id, ip_address=device_id or client_ip, report_mode=report_mode)
             review_id = review.id
             asyncio.create_task(run_review_pipeline_background(
                 review_id, repo_url, branch, selected_files, user.username, report_mode=report_mode
