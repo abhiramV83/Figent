@@ -6,7 +6,6 @@
 [![Production App](https://img.shields.io/badge/Production-figent.vercel.app-60684f?style=for-the-badge&logo=vercel)](https://figent.vercel.app)
 [![API Status](https://img.shields.io/badge/API_Status-Online-4a5c2d?style=for-the-badge&logo=fastapi)](https://figent-api.onrender.com/health)
 [![LangGraph](https://img.shields.io/badge/Orchestrator-LangGraph-2c3024?style=for-the-badge)](https://github.com/langchain-ai/langgraph)
-[![License](https://img.shields.io/badge/License-MIT-8f8b80?style=for-the-badge)](LICENSE)
 
 ---
 
