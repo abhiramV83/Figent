@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌿 Figent
+#  Figent
 ### *Autonomous Multi-Agent Code Review & Remediation Orchestrator powered by LangGraph*
 
 [![Production App](https://img.shields.io/badge/Production-figent.vercel.app-60684f?style=for-the-badge&logo=vercel)](https://figent.vercel.app)
