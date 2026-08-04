@@ -10,14 +10,20 @@ async def lifespan(app):
     print("Figent API started — tables ready")
     yield
 
+import os
+
+env = os.getenv("ENVIRONMENT", "development")
+show_docs = env != "production"
+
 app = FastAPI(
     title="Figent API",
     description="Autonomous multi-agent code review system",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs" if show_docs else None,
+    redoc_url="/redoc" if show_docs else None,
+    openapi_url="/openapi.json" if show_docs else None
 )
-
-import os
 
 origins = ["http://localhost:3000", "http://localhost:5173"]
 frontend_url = os.getenv("FRONTEND_URL")
