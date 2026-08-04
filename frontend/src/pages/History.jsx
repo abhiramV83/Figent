@@ -7,6 +7,7 @@ import { olive, sand } from '../theme'
 export default function History({ token, onAuthError }) {
   const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -68,6 +69,38 @@ export default function History({ token, onAuthError }) {
         {/* Divider */}
         <div style={{ height: '1px', background: sand[200], marginBottom: '24px' }}></div>
 
+        {/* Search Bar */}
+        {!loading && reviews.length > 0 && (
+          <div style={{ marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search repository audits by name or URL..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                background: sand[50],
+                border: `1px solid ${sand[200]}`,
+                borderRadius: '10px',
+                padding: '12px 16px',
+                fontSize: '13px',
+                color: sand[950],
+                fontWeight: 600,
+                outline: 'none',
+                transition: 'border-color 0.15s, box-shadow 0.15s'
+              }}
+              onFocus={e => {
+                e.target.style.borderColor = olive[500]
+                e.target.style.boxShadow = `0 0 0 3px ${olive[100]}`
+              }}
+              onBlur={e => {
+                e.target.style.borderColor = sand[200]
+                e.target.style.boxShadow = 'none'
+              }}
+            />
+          </div>
+        )}
+
         {loading && (
           <div style={{ textAlign: 'center', color: sand[600], padding: '48px 0', fontSize: '13px', fontWeight: 600 }}>
             Loading...
@@ -117,9 +150,21 @@ export default function History({ token, onAuthError }) {
           </div>
         )}
 
+        {!loading && reviews.length > 0 && reviews.filter(r => r.repo_url.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+          <div style={{
+            textAlign: 'center', padding: '48px 32px',
+            background: sand[50], border: `1px dashed ${sand[200]}`, borderRadius: '14px',
+            color: sand[600], fontSize: '13px', fontWeight: 600
+          }}>
+            No repository audits match "{searchQuery}"
+          </div>
+        )}
+
         {/* Review cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {reviews.map(r => (
+          {reviews
+            .filter(r => r.repo_url.toLowerCase().includes(searchQuery.toLowerCase()))
+            .map(r => (
             <div
               key={r.id}
               onClick={() => navigate(`/review/${r.id}`)}

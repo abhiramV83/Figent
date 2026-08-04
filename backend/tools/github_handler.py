@@ -96,6 +96,15 @@ class GitHubHandler:
         parts = parts.replace(".git", "")
         return self.client.get_repo(parts)
 
+    def check_write_access(self, repo_url: str) -> bool:
+        """Check if the authenticated GITHUB_TOKEN has write/push access to the repository"""
+        try:
+            repo = self.get_repo(repo_url)
+            return repo.permissions.push
+        except Exception as e:
+            print(f"Error checking write access via PyGithub: {e}")
+            return False
+
     def get_default_branch(self, repo) -> str:
         return repo.default_branch
 

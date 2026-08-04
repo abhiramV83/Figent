@@ -22,7 +22,7 @@ const PIPELINE_STEPS = [
   { key: 'pr_agent',         icon: 'M7.5 7.5h-.75A2.25 2.25 0 004.5 9.75v7.5a2.25 2.25 0 002.25 2.25h7.5a2.25 2.25 0 002.25-2.25v-7.5a2.25 2.25 0 00-2.25-2.25h-.75m-6 3.75l3 3m0 0l3-3m-3 3V1.5m6 9h.75a2.25 2.25 0 012.25 2.25v7.5a2.25 2.25 0 01-2.25 2.25h-7.5a2.25 2.25 0 01-2.25-2.25v-.75' },
 ]
 
-export default function Home({ token, onAuthError }) {
+export default function Home({ token, username, onAuthError }) {
   const [repoUrl, setRepoUrl]           = useState('')
   const [status, setStatus]             = useState('idle')
   const [errorMessage, setErrorMessage] = useState('')
@@ -44,6 +44,15 @@ export default function Home({ token, onAuthError }) {
   const statusRef = useRef(status)
   statusRef.current = status
   const wsRef = useRef(null)
+
+  const parseRepoOwner = (url) => {
+    if (!url) return null
+    const match = url.match(/github\.com\/([^/]+)\/([^/]+)/i)
+    return match ? match[1] : null
+  }
+  const repoOwner = parseRepoOwner(repoUrl)
+  const isNotUserRepo = repoOwner && username && repoOwner.toLowerCase() !== username.toLowerCase() && !username.startsWith('guest_')
+  const isGuest = username && username.startsWith('guest_')
 
   // Fetch running reviews on mount to restore dashboard state
   useEffect(() => {
@@ -155,6 +164,7 @@ export default function Home({ token, onAuthError }) {
       headers: { Authorization: `Bearer ${token}` }
     })
     .then(res => {
+      setErrorMessage('')
       const branchNames = res.data.branches || []
       setBranches(branchNames)
       setLoadingBranches(false)
@@ -171,6 +181,8 @@ export default function Home({ token, onAuthError }) {
     .catch(err => {
       setLoadingBranches(false)
       setBranches([])
+      const msg = err.response?.data?.detail || 'Failed to fetch repository branches. Please verify it is a valid, public GitHub repository.'
+      setErrorMessage(msg)
     })
   }, [repoUrl, token])
 
@@ -185,10 +197,12 @@ export default function Home({ token, onAuthError }) {
     }
 
     setLoadingFiles(true)
+    setErrorMessage('')
     axios.get(`${API_BASE}/api/repo/files?repo_url=${encodeURIComponent(url)}&branch=${encodeURIComponent(selectedBranch)}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
     .then(async (res) => {
+      setErrorMessage('')
       const files = res.data.files || []
       setFilesList(files)
       setLoadingFiles(false)
@@ -246,6 +260,8 @@ export default function Home({ token, onAuthError }) {
       setLoadingFiles(false)
       setFilesList([])
       setCheckedFiles([])
+      const msg = err.response?.data?.detail || 'Failed to read repository files. Please verify the branch exists.'
+      setErrorMessage(msg)
     })
   }, [repoUrl, selectedBranch, defaultBranch, token])
 
@@ -564,7 +580,10 @@ export default function Home({ token, onAuthError }) {
                     }}
                     placeholder="https://github.com/username/repo"
                     value={repoUrl}
-                    onChange={e => setRepoUrl(e.target.value)}
+                    onChange={e => {
+                      setRepoUrl(e.target.value)
+                      setErrorMessage('')
+                    }}
                     onFocus={e => {
                       e.target.style.borderColor = olive[500]
                       e.target.style.boxShadow = `0 0 0 3px ${olive[100]}`
@@ -575,6 +594,61 @@ export default function Home({ token, onAuthError }) {
                     }}
                   />
                 </div>
+
+                {errorMessage && (
+                  <div style={{
+                    background: '#fdf0ee', border: '1px solid #e8c4bc',
+                    borderRadius: '12px', padding: '12px 16px', marginBottom: '20px',
+                    fontSize: '12.5px', color: '#8b3a2a', fontWeight: 600,
+                    animation: 'fadeIn 0.2s ease-out', display: 'flex', alignItems: 'flex-start', gap: '8px',
+                    lineHeight: 1.45
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ color: '#8b3a2a', flexShrink: 0, marginTop: '2px' }}>
+                      <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                        stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span style={{ flex: 1, wordBreak: 'break-word' }}>{errorMessage}</span>
+                  </div>
+                )}
+
+                {isNotUserRepo && !errorMessage && (
+                  <div style={{
+                    background: '#fffbeb', border: '1px solid #fef3c7',
+                    borderRadius: '12px', padding: '14px 18px', marginBottom: '20px',
+                    fontSize: '12.5px', color: '#78350f', fontWeight: 600,
+                    animation: 'fadeIn 0.2s ease-out', display: 'flex', alignItems: 'flex-start', gap: '10px',
+                    lineHeight: 1.55
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }}>
+                      <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                        stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <div>
+                      This repository is owned by <span style={{ fontFamily: 'monospace', fontWeight: 800 }}>{repoOwner}</span> (not you). 
+                      Auditing will run in <span style={{ fontWeight: 800 }}>Report-only Mode</span> (Pull Requests/Issues cannot be opened).
+                      If you want to apply auto-fixes, please fork this repository to your account first.
+                    </div>
+                  </div>
+                )}
+
+                {isGuest && !errorMessage && (
+                  <div style={{
+                    background: '#fffbeb', border: '1px solid #fef3c7',
+                    borderRadius: '12px', padding: '14px 18px', marginBottom: '20px',
+                    fontSize: '12.5px', color: '#78350f', fontWeight: 600,
+                    animation: 'fadeIn 0.2s ease-out', display: 'flex', alignItems: 'flex-start', gap: '10px',
+                    lineHeight: 1.55
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }}>
+                      <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                        stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <div>
+                      You are in <span style={{ fontWeight: 800 }}>Guest Mode</span>. Auditing will run in <span style={{ fontWeight: 800 }}>Report-only Mode</span>.
+                      To open automated Pull Requests, create issues, and use the platform efficiently, please <span style={{ textDecoration: 'underline', cursor: 'pointer', fontWeight: 800 }} onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('username'); window.location.href = '/login'; }}>Sign In with GitHub</span> and audit your own repositories.
+                    </div>
+                  </div>
+                )}
 
                 {loadingBranches && (
                   <div style={{ color: sand[500], fontSize: '12px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -722,7 +796,7 @@ export default function Home({ token, onAuthError }) {
                         </div>
                       ) : filesList.length === 0 ? (
                         <div style={{ color: sand[500], fontSize: '12px', padding: '12px', border: `1px dashed ${sand[200]}`, borderRadius: '8px', textAlign: 'center', fontWeight: 600 }}>
-                          No supported code files found (.py, .js, .ts, .java, .go)
+                          No supported code files found (.py, .js, .ts, .java, .go, .sh, .rs)
                         </div>
                       ) : (
                         <div style={{

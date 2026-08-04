@@ -120,13 +120,13 @@ export default function App() {
           path="/"
           element={
             token ? (
-              <ProtectedRoute><Home token={token} onAuthError={handleLogout} /></ProtectedRoute>
+              <ProtectedRoute><Home token={token} username={username} onAuthError={handleLogout} /></ProtectedRoute>
             ) : (
               <Landing />
             )
           }
         />
-        <Route path="/review/:id" element={<ProtectedRoute><Review token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
+        <Route path="/review/:id" element={<ProtectedRoute><Review token={token} username={username} onAuthError={handleLogout} /></ProtectedRoute>} />
         <Route path="/history" element={<ProtectedRoute><History token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile token={token} onAuthError={handleLogout} /></ProtectedRoute>} />
         <Route path="/support" element={<ProtectedRoute><Support token={token} onAuthError={handleLogout} /></ProtectedRoute>} />

@@ -12,7 +12,7 @@ MAX_FILE_SIZE_KB = 100
 
 # Languages we support — bandit/radon only work on .py,
 # but LLM agents can read any of these
-SUPPORTED_EXTENSIONS = [".py", ".js", ".ts", ".java", ".go"]
+SUPPORTED_EXTENSIONS = [".py", ".js", ".ts", ".java", ".go", ".sh", ".rs"]
 
 
 def _force_remove(func, path, exc_info):

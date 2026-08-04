@@ -975,3 +975,9 @@ unnecessary narration.
 Decision: decisions.md linked from README — shows engineering
 maturity. Most students never document why they made choices.
 This file alone differentiates the project in interviews.
+
+---
+
+## Day 18 — Repository Write Access & Responsible AI Design
+
+Decision: Figent analyzes any public GitHub repo. Owner-check runs by comparing repository owner username directly with the logged-in GitHub username. If they do not match, the audit runs in report-only mode and suggests the user fork the repository to their own account.

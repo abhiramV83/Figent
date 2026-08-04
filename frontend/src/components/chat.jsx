@@ -10,6 +10,92 @@ const suggestions = [
   'What should I fix first?'
 ]
 
+function CodeBlockWithCopy({ code, language }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div style={{ 
+      position: 'relative',
+      background: sand[100], 
+      border: `1px solid ${sand[200]}`, 
+      borderRadius: '8px', 
+      padding: '12px', 
+      margin: '10px 0',
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: olive[700],
+      fontWeight: 700,
+    }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        borderBottom: `1px solid ${sand[200]}`, 
+        paddingBottom: '6px', 
+        marginBottom: '8px',
+        fontSize: '10px',
+        color: sand[500],
+        fontWeight: 800,
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em'
+      }}>
+        <span>{language || 'code'}</span>
+        <button
+          onClick={handleCopy}
+          style={{
+            background: copied ? olive[100] : 'transparent',
+            border: `1px solid ${copied ? olive[300] : sand[300]}`,
+            color: copied ? olive[700] : sand[600],
+            borderRadius: '4px',
+            padding: '2px 8px',
+            cursor: 'pointer',
+            fontSize: '9px',
+            fontWeight: 800,
+            transition: 'all 0.15s',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+          onMouseEnter={e => { if (!copied) { e.currentTarget.style.borderColor = olive[500]; e.currentTarget.style.color = olive[750] } }}
+          onMouseLeave={e => { if (!copied) { e.currentTarget.style.borderColor = sand[300]; e.currentTarget.style.color = sand[600] } }}
+        >
+          {copied ? (
+            <>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Copied!
+            </>
+          ) : (
+            <>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              Copy code
+            </>
+          )}
+        </button>
+      </div>
+      <pre style={{ 
+        margin: 0, 
+        overflowX: 'auto', 
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        fontFamily: 'inherit'
+      }}>
+        {code}
+      </pre>
+    </div>
+  )
+}
+
 function renderMarkdown(text) {
   if (!text) return null
   
@@ -20,22 +106,9 @@ function renderMarkdown(text) {
     if (part.startsWith('```')) {
       const match = part.match(/```([a-z]*)\n([\s\S]*?)\n```/)
       const code = match ? match[2] : part.slice(3, -3)
+      const language = match ? match[1] : ''
       return (
-        <div key={index} style={{ 
-          background: sand[100], 
-          border: `1px solid ${sand[200]}`, 
-          borderRadius: '8px', 
-          padding: '12px', 
-          margin: '10px 0',
-          fontFamily: 'monospace',
-          fontSize: '12px',
-          overflowX: 'auto',
-          color: olive[700],
-          fontWeight: 700,
-          whiteSpace: 'pre'
-        }}>
-          {code}
-        </div>
+        <CodeBlockWithCopy key={index} code={code} language={language} />
       )
     }
     

@@ -2,9 +2,9 @@ from sqlalchemy.orm import Session
 from backend.db.models import User, Review, Finding, ChatSession, ChatMessage
 from datetime import datetime
 
-def create_review(db: Session, repo_url: str, owner_id: int = None, ip_address: str = None) -> Review:
+def create_review(db: Session, repo_url: str, owner_id: int = None, ip_address: str = None, report_mode: bool = False) -> Review:
     """Create a new review record"""
-    review = Review(repo_url=repo_url, status="running", owner_id=owner_id, ip_address=ip_address)
+    review = Review(repo_url=repo_url, status="running", owner_id=owner_id, ip_address=ip_address, report_mode=report_mode)
     db.add(review)
     db.commit()
     db.refresh(review)
@@ -26,6 +26,7 @@ def complete_review(db: Session, review_id: int, result: dict) -> Review:
     review.pr_count = pr_count
     review.issue_count = issue_count
     review.error = result.get("error")
+    review.report_mode = result.get("report_mode", False)
 
     # Save all findings
     for f in result.get("all_findings", []):

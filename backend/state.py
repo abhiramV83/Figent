@@ -22,3 +22,4 @@ class ReviewState(TypedDict):
     error: Optional[str]
     branch: Optional[str]
     selected_files: Optional[List[str]]
+    report_mode: Optional[bool]

@@ -29,6 +29,7 @@ def create_tables():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_otp VARCHAR(10)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_otp_expires TIMESTAMP",
             "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS ip_address VARCHAR(255)",
+            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_mode BOOLEAN DEFAULT FALSE",
         ]
         for sql in migrations:
             try:

@@ -19,7 +19,7 @@ const severityBadge = {
   low: { color: olive[700], background: olive[50], border: `1px solid ${olive[200]}`, fontWeight: 800 }
 }
 
-export default function Review({ token, onAuthError }) {
+export default function Review({ token, username, onAuthError }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [review, setReview] = useState(null)
@@ -96,6 +96,45 @@ export default function Review({ token, onAuthError }) {
     { id: 'github', label: 'GitHub', count: withAction.length }
   ]
 
+
+
+  const downloadPdfReport = async () => {
+    if (!review) return
+    
+    const loadHtml2Pdf = () => {
+      return new Promise((resolve) => {
+        if (window.html2pdf) {
+          resolve(window.html2pdf)
+          return
+        }
+        const script = document.createElement('script')
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
+        script.onload = () => resolve(window.html2pdf)
+        document.body.appendChild(script)
+      })
+    }
+
+    try {
+      const html2pdf = await loadHtml2Pdf()
+      const element = document.getElementById('report-print-area')
+      
+      const repoParts = review.repo_url.split('/')
+      const repoName = (repoParts[repoParts.length - 1] || 'repo').replace(/\.git$/, '')
+
+      const opt = {
+        margin:       [0.4, 0.4, 0.4, 0.4],
+        filename:     `figent_${repoName}_audit_report.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+      }
+
+      html2pdf().set(opt).from(element).save()
+    } catch (err) {
+      console.error('PDF Generation Error:', err)
+    }
+  }
+
   return (
     <div style={{ 
       minHeight: activeTab === 'chat' ? 'calc(100vh - 140px)' : 'calc(100vh - 4rem)', 
@@ -126,16 +165,63 @@ export default function Review({ token, onAuthError }) {
           Back to History
         </button>
 
-        {/* Repo URL header */}
-        <div style={{ marginBottom: '28px' }}>
-          <h1 style={{ color: sand[950], fontSize: '22px', fontWeight: 800,
-            fontFamily: 'monospace', wordBreak: 'break-all', margin: '0 0 6px' }}>
-            {review.repo_url}
-          </h1>
-          <p style={{ color: sand[600], fontSize: '12px', margin: 0, fontWeight: 600 }}>
-            Completed {new Date(review.created_at.endsWith('Z') || review.created_at.includes('+') ? review.created_at : review.created_at + 'Z').toLocaleString()}
-          </p>
-        </div>
+        <div id="report-print-area" style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+          {/* Repo URL header and Download Button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px', marginBottom: '28px', flexWrap: 'wrap' }}>
+            <div>
+              <h1 style={{ color: sand[950], fontSize: '22px', fontWeight: 800,
+                fontFamily: 'monospace', wordBreak: 'break-all', margin: '0 0 6px' }}>
+                {review.repo_url}
+              </h1>
+              <p style={{ color: sand[600], fontSize: '12px', margin: 0, fontWeight: 600 }}>
+                Completed {new Date(review.created_at.endsWith('Z') || review.created_at.includes('+') ? review.created_at : review.created_at + 'Z').toLocaleString()}
+              </p>
+            </div>
+            
+            <button
+              data-html2pdf-ignore="true"
+              onClick={downloadPdfReport}
+              style={{
+                background: olive[600], border: `1px solid ${olive[600]}`,
+                color: '#f7f9eb', borderRadius: '10px', padding: '10px 18px',
+                fontSize: '12.5px', fontWeight: 800, cursor: 'pointer',
+                transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px'
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = olive[700]}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = olive[600]}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/>
+              </svg>
+              Download PDF
+            </button>
+          </div>
+
+        {/* Report-only Mode Banner */}
+        {review?.report_mode && (
+          <div style={{
+            background: '#fffbeb', border: '1px solid #fef3c7',
+            borderRadius: '12px', padding: '14px 20px', marginBottom: '28px',
+            display: 'flex', alignItems: 'flex-start', gap: '12px',
+            animation: 'fadeIn 0.22s ease-out'
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }}>
+              <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span style={{ fontSize: '13px', color: '#78350f', fontWeight: 600, lineHeight: 1.5, flex: 1, wordBreak: 'break-word' }}>
+              {username && username.startsWith('guest_') ? (
+                <>
+                  Guest Report Mode — showing full analysis only. To enable auto-fixes (opening Pull Requests and Issues) directly on your own repositories, please <span style={{ textDecoration: 'underline', cursor: 'pointer', fontWeight: 800 }} onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('username'); window.location.href = '/login'; }}>sign in with your GitHub account</span>.
+                </>
+              ) : (
+                <>
+                  Report-only mode — you don't own this repository. Showing full analysis only. To enable auto-fixes (PRs/Issues), please fork this repository to your own GitHub account and run the audit there.
+                </>
+              )}
+            </span>
+          </div>
+        )}
 
         {/* Stats row */}
         <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '28px' }}>
@@ -217,7 +303,7 @@ export default function Review({ token, onAuthError }) {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${sand[200]}`, marginBottom: '24px' }}>
+        <div data-html2pdf-ignore="true" style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${sand[200]}`, marginBottom: '24px' }}>
           {[
             { id: 'findings', label: 'Findings Report' },
             { id: 'chat', label: 'AI Assistant' }
@@ -252,7 +338,7 @@ export default function Review({ token, onAuthError }) {
         {activeTab === 'findings' && (
           <div>
             {/* Filter row */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+            <div data-html2pdf-ignore="true" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
               {filters.map(f => {
                 const active = severityFilter === f.id
                 return (
@@ -356,9 +442,37 @@ export default function Review({ token, onAuthError }) {
                     </div>
                   </div>
 
-                  <p style={{ color: sand[950], fontSize: '13.5px', lineHeight: 1.65, margin: '0 0 14px', fontWeight: 600 }}>
-                    {f.issue}
-                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', margin: '0 0 16px' }}>
+                    {f.issue.split(' | ').map((issueText, idx) => {
+                      const match = issueText.match(/^\[(quality|security|performance)\]\s*(.*)$/i)
+                      if (match) {
+                        const [, agentType, text] = match
+                        const agentLabel = agentType.charAt(0).toUpperCase() + agentType.slice(1)
+                        const badgeColor = agentType === 'security' ? '#b91c1c' : agentType === 'performance' ? '#ca8a04' : olive[600]
+                        const badgeBg = agentType === 'security' ? '#fef2f2' : agentType === 'performance' ? '#fefce8' : olive[50]
+                        const badgeBorder = agentType === 'security' ? '1px solid #fca5a5' : agentType === 'performance' ? '1px solid #fde047' : `1px solid ${olive[200]}`
+                        
+                        return (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', fontSize: '13.5px', lineHeight: 1.6 }}>
+                            <span style={{ 
+                              fontSize: '9px', fontWeight: 900, color: badgeColor, background: badgeBg, 
+                              border: badgeBorder, borderRadius: '4px', padding: '1px 6px', 
+                              textTransform: 'uppercase', marginTop: '3px', flexShrink: 0,
+                              letterSpacing: '0.04em', width: '82px', textAlign: 'center'
+                            }}>
+                              {agentLabel}
+                            </span>
+                            <span style={{ color: sand[950], fontWeight: 600, flex: 1, wordBreak: 'break-word' }}>{text}</span>
+                          </div>
+                        )
+                      }
+                      return (
+                        <p key={idx} style={{ color: sand[950], fontSize: '13.5px', lineHeight: 1.6, margin: 0, fontWeight: 600 }}>
+                          {issueText}
+                        </p>
+                      )
+                    })}
+                  </div>
 
                   {f.fix && (
                     <div style={{ background: sand[100], border: `1px solid ${sand[200]}`,
@@ -405,6 +519,7 @@ export default function Review({ token, onAuthError }) {
             </div>
           </div>
         )}
+        </div>
 
         {/* Chat tab */}
         {activeTab === 'chat' && sessionId && (

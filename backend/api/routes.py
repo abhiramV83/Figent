@@ -1,5 +1,4 @@
 import os
-import json
 import asyncio
 import hashlib
 import secrets
@@ -8,10 +7,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, BackgroundTasks, Request
-from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel
 from backend.db.models import Review
 
@@ -642,8 +640,7 @@ def register(request: UserRegister, background_tasks: BackgroundTasks, db: Sessi
     existing = crud.get_user_by_username(db, request.username)
     if existing:
         if not existing.is_verified:
-            import random
-            otp = f"{random.randint(100000, 999999)}"
+            otp = f"{100000 + secrets.randbelow(900000)}"
             expires_at = datetime.utcnow() + timedelta(minutes=10)
             crud.update_user_verification_otp(db, existing, otp, expires_at)
             background_tasks.add_task(send_verification_email, existing.email, existing.username, otp)
@@ -660,8 +657,7 @@ def register(request: UserRegister, background_tasks: BackgroundTasks, db: Sessi
     existing_email = crud.get_user_by_email(db, request.email)
     if existing_email:
         if not existing_email.is_verified:
-            import random
-            otp = f"{random.randint(100000, 999999)}"
+            otp = f"{100000 + secrets.randbelow(900000)}"
             expires_at = datetime.utcnow() + timedelta(minutes=10)
             crud.update_user_verification_otp(db, existing_email, otp, expires_at)
             background_tasks.add_task(send_verification_email, existing_email.email, existing_email.username, otp)
@@ -678,8 +674,7 @@ def register(request: UserRegister, background_tasks: BackgroundTasks, db: Sessi
         raise HTTPException(status_code=400, detail=msg)
     
     # Generate 6-digit OTP code
-    import random
-    otp = f"{random.randint(100000, 999999)}"
+    otp = f"{100000 + secrets.randbelow(900000)}"
     expires_at = datetime.utcnow() + timedelta(minutes=10)
 
     password_hash = hash_password(request.password)
@@ -698,12 +693,9 @@ def register(request: UserRegister, background_tasks: BackgroundTasks, db: Sessi
 @router.post("/auth/verify-email")
 def verify_email(request: VerifyEmailRequest, db: Session = Depends(get_db)):
     """Verify 6-digit registration OTP and issue login token"""
-    if request.otp == "123456":
-        user = crud.get_user_by_email(db, request.email)
-    else:
-        user = crud.get_user_by_verification_otp(db, request.email, request.otp)
+    user = crud.get_user_by_verification_otp(db, request.email, request.otp)
         
-    if not user or (request.otp != "123456" and (not user.verification_otp_expires or user.verification_otp_expires < datetime.utcnow())):
+    if not user or not user.verification_otp_expires or user.verification_otp_expires < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Invalid or expired verification OTP code")
     
     crud.verify_user_email(db, user)
@@ -721,7 +713,7 @@ def verify_email(request: VerifyEmailRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/login")
-def login(request: UserAuth, db: Session = Depends(get_db)):
+def login(request: UserAuth, request_obj: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Authenticate credentials and generate token"""
     user = crud.get_user_by_username(db, request.username)
     if not user or not verify_password(request.password, user.password_hash):
@@ -735,6 +727,14 @@ def login(request: UserAuth, db: Session = Depends(get_db)):
     expires_at = datetime.utcnow() + timedelta(days=7)
     crud.update_user_token(db, user, token, expires_at)
     
+    # Send login alert emails asynchronously to user and admin
+    background_tasks.add_task(
+        send_login_notification_email,
+        user.username,
+        user.email,
+        get_client_ip(request_obj)
+    )
+    
     return {
         "token": token,
         "username": user.username,
@@ -747,8 +747,7 @@ def forgot_password(request: ForgotPasswordRequest, background_tasks: Background
     """Initiate password recovery and send reset OTP in the background"""
     user = crud.get_user_by_email(db, request.email)
     if user:
-        import random
-        otp = f"{random.randint(100000, 999999)}"
+        otp = f"{100000 + secrets.randbelow(900000)}"
         expires_at = datetime.utcnow() + timedelta(minutes=10)
         crud.update_user_reset_token(db, user, otp, expires_at)
         
@@ -765,7 +764,7 @@ def forgot_password(request: ForgotPasswordRequest, background_tasks: Background
 def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
     """Verify reset OTP code and update password hash"""
     user = crud.get_user_by_email(db, request.email)
-    if not user or (request.otp != "123456" and (user.reset_token != request.otp or not user.reset_token_expires or user.reset_token_expires < datetime.utcnow())):
+    if not user or user.reset_token != request.otp or not user.reset_token_expires or user.reset_token_expires < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Invalid or expired password reset OTP code")
     
     ok, msg = is_strong_password(request.password)
@@ -816,7 +815,7 @@ def create_guest_user(db: Session = Depends(get_db)):
 
 
 @router.post("/auth/github")
-def github_auth(request: GitHubAuthRequest, db: Session = Depends(get_db)):
+def github_auth(request: GitHubAuthRequest, request_obj: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Exchange GitHub authorization code for user token"""
     import requests
     import logging
@@ -846,16 +845,12 @@ def github_auth(request: GitHubAuthRequest, db: Session = Depends(get_db)):
         if not access_token:
             err_msg = f"Failed to get GitHub access token. GitHub returned: {token_data}"
             logger.error(err_msg)
-            with open("oauth_error.log", "a", encoding="utf-8") as f_err:
-                f_err.write(f"[{datetime.utcnow()}] {err_msg}\n")
             raise HTTPException(status_code=400, detail=token_data.get("error_description") or "Invalid authorization code")
     except HTTPException:
         raise
     except Exception as e:
         err_msg = f"Error exchanging code with GitHub: {type(e).__name__}: {e}"
         logger.error(err_msg)
-        with open("oauth_error.log", "a", encoding="utf-8") as f_err:
-            f_err.write(f"[{datetime.utcnow()}] {err_msg}\n")
         raise HTTPException(status_code=400, detail="Failed to authenticate with GitHub")
 
     # 2. Fetch user profile from GitHub
@@ -873,16 +868,12 @@ def github_auth(request: GitHubAuthRequest, db: Session = Depends(get_db)):
         if not github_username:
             err_msg = f"Failed to fetch GitHub profile. GitHub returned: {user_data}"
             logger.error(err_msg)
-            with open("oauth_error.log", "a", encoding="utf-8") as f_err:
-                f_err.write(f"[{datetime.utcnow()}] {err_msg}\n")
             raise HTTPException(status_code=400, detail="Failed to fetch GitHub profile")
     except HTTPException:
         raise
     except Exception as e:
         err_msg = f"Error fetching GitHub profile: {type(e).__name__}: {e}"
         logger.error(err_msg)
-        with open("oauth_error.log", "a", encoding="utf-8") as f_err:
-            f_err.write(f"[{datetime.utcnow()}] {err_msg}\n")
         raise HTTPException(status_code=400, detail="Failed to connect to GitHub API")
 
     # 3. Fetch user email from GitHub
@@ -928,6 +919,14 @@ def github_auth(request: GitHubAuthRequest, db: Session = Depends(get_db)):
     expires_at = datetime.utcnow() + timedelta(days=7)
     crud.update_user_token(db, user, token, expires_at)
 
+    # Send login alert emails asynchronously to user and admin
+    background_tasks.add_task(
+        send_login_notification_email,
+        user.username,
+        user.email,
+        get_client_ip(request_obj)
+    )
+
     return {
         "token": token,
         "username": user.username,
@@ -970,8 +969,8 @@ def validate_github_repo(repo_url: str) -> bool:
         res_get = requests.get(api_url, headers=headers, timeout=5)
         return res_get.status_code == 200
     except Exception:
-        # Fallback to True if connection times out or fails (so we don't block users due to temporary network glitch)
-        return True
+        # Fail closed — reject unverifiable URLs rather than letting them through
+        return False
 
 
 def parse_github_url(repo_url: str) -> tuple[str, str] | None:
@@ -981,6 +980,18 @@ def parse_github_url(repo_url: str) -> tuple[str, str] | None:
     if not match:
         return None
     return match.group(1), match.group(2)
+
+
+def map_github_api_error(status_code: int, raw_text: str, operation: str) -> str:
+    """Helper to convert raw GitHub API error responses to clean, user-friendly warnings"""
+    if status_code == 404:
+        return "The specified GitHub repository or branch does not exist, or it is private. Please verify that the repository URL and branch name are correct and publicly accessible."
+    elif status_code in (403, 429):
+        return "GitHub API rate limit exceeded or access forbidden. Please wait a few minutes and try again."
+    elif status_code == 401:
+        return "GitHub authorization failed. Please check the server GITHUB_TOKEN configuration."
+    else:
+        return f"Failed to {operation} from GitHub (HTTP Status: {status_code})."
 
 
 @router.get("/repo/branches")
@@ -1004,7 +1015,7 @@ def get_repo_branches(repo_url: str, user = Depends(get_current_user)):
         import requests
         res = requests.get(api_url, headers=headers, timeout=10)
         if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=f"Failed to fetch branches from GitHub: {res.text}")
+            raise HTTPException(status_code=res.status_code, detail=map_github_api_error(res.status_code, res.text, "fetch branches"))
         branches = [b["name"] for b in res.json()]
         return {"branches": branches}
     except Exception as e:
@@ -1034,7 +1045,7 @@ def get_repo_files(repo_url: str, branch: str = "main", user = Depends(get_curre
         import requests
         res = requests.get(api_url, headers=headers, timeout=15)
         if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=f"Failed to fetch file tree from GitHub: {res.text}")
+            raise HTTPException(status_code=res.status_code, detail=map_github_api_error(res.status_code, res.text, "fetch file tree"))
             
         tree_data = res.json()
         tree = tree_data.get("tree", [])
@@ -1137,7 +1148,15 @@ async def start_review(request: Request, review_req: ReviewRequest, db: Session 
                 detail="Free tier limit reached for guest sessions. Please sign in with GitHub to unlock unlimited code audits."
             )
     
-    review = crud.create_review(db, review_req.repo_url, owner_id=user.id, ip_address=client_ip)
+    # Determine report_mode
+    report_mode = True
+    parsed = parse_github_url(review_req.repo_url)
+    if parsed:
+        owner, _ = parsed
+        if user and user.username and not user.username.startswith("guest_") and owner.lower() == user.username.lower():
+            report_mode = False
+
+    review = crud.create_review(db, review_req.repo_url, owner_id=user.id, ip_address=client_ip, report_mode=report_mode)
     return {"review_id": review.id, "status": "started"}
 
 
@@ -1236,7 +1255,7 @@ def stop_review(review_id: int, db: Session = Depends(get_db), user = Depends(ge
 
     return {"message": "Review is not currently running"}
 
-async def run_review_pipeline_background(review_id: int, repo_url: str, branch: Optional[str], selected_files: Optional[list[str]], username: str):
+async def run_review_pipeline_background(review_id: int, repo_url: str, branch: Optional[str], selected_files: Optional[list[str]], username: str, report_mode: bool = False):
     """Executes the review graph in a detached async background task and publishes progress events"""
     from backend.db.database import SessionLocal
     db = SessionLocal()
@@ -1275,7 +1294,8 @@ async def run_review_pipeline_background(review_id: int, repo_url: str, branch: 
             "pr_urls": [],
             "error": None,
             "branch": branch,
-            "selected_files": selected_files
+            "selected_files": selected_files,
+            "report_mode": report_mode
         }
 
         accumulated_state = dict(initial_state)
@@ -1409,6 +1429,28 @@ async def run_review_pipeline_background(review_id: int, repo_url: str, branch: 
             crud.complete_review(db, review_id, final_result)
             active_chat_agents[review_id] = ChatAgent(final_result, username=username)
 
+            # Send completion email if email exists and user is not a guest
+            try:
+                import logging
+                logger = logging.getLogger("uvicorn.error")
+                from backend.db.models import User
+                review = crud.get_review(db, review_id)
+                if review and review.owner_id:
+                    user = db.query(User).filter(User.id == review.owner_id).first()
+                    if user and user.email and not user.username.startswith("guest_"):
+                        asyncio.create_task(asyncio.to_thread(
+                            send_audit_completed_email,
+                            username=user.username,
+                            email=user.email,
+                            review_id=review_id,
+                            repo_url=repo_url,
+                            total_findings=review.total_findings or 0
+                        ))
+            except Exception as mail_err:
+                import logging
+                logger = logging.getLogger("uvicorn.error")
+                logger.error(f"Error preparing completed review email notification: {mail_err}")
+
             # Publish final complete event
             task_manager.publish_event(review_id, {
                 "type": "complete",
@@ -1503,14 +1545,22 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
             Review.status.in_(["pending", "running"])
         ).order_by(Review.created_at.desc()).first()
 
+        # Determine report_mode
+        report_mode = True
+        parsed = parse_github_url(repo_url)
+        if parsed:
+            owner, _ = parsed
+            if user and user.username and not user.username.startswith("guest_") and owner.lower() == user.username.lower():
+                report_mode = False
+
         if existing_running:
             review_id = existing_running.id
         else:
             # Create review record and launch background task runner
-            review = crud.create_review(db, repo_url, owner_id=user.id, ip_address=client_ip)
+            review = crud.create_review(db, repo_url, owner_id=user.id, ip_address=client_ip, report_mode=report_mode)
             review_id = review.id
             asyncio.create_task(run_review_pipeline_background(
-                review_id, repo_url, branch, selected_files, user.username
+                review_id, repo_url, branch, selected_files, user.username, report_mode=report_mode
             ))
 
         # Register event queue listener for this review ID
@@ -1730,6 +1780,487 @@ def send_support_ticket_email(name: str, email: str, subject: str, message: str)
         return True
     except Exception as e:
         logger.error(f"Failed to send support ticket email: {e}")
+        return False
+
+
+def send_login_notification_email(username: str, email: str, ip_address: str = None):
+    """Send beautiful login alert emails to both the user and the admin"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import logging
+    logger = logging.getLogger("uvicorn.error")
+
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = os.getenv("SMTP_PORT")
+    smtp_user = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+    smtp_from = os.getenv("SMTP_FROM") or smtp_user
+    admin_recipient = "figentbyabhiram@gmail.com"
+    ip_str = ip_address or "Unknown IP"
+    from datetime import timedelta
+    ist_time = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    time_str = ist_time.strftime("%Y-%m-%d %H:%M:%S IST")
+
+    if not smtp_host or not smtp_user or not smtp_pass:
+        logger.info(f"\n[EMAIL SIMULATION] Login Alert for {username} ({email or 'No email'}) from {ip_str} at {time_str}\n")
+        return True
+
+    # 1. Send security alert to the User
+    if email:
+        try:
+            msg_user = MIMEMultipart('alternative')
+            msg_user['From'] = f'"Figent Security" <{smtp_from}>'
+            msg_user['To'] = email
+            msg_user['Subject'] = "[Figent] Security Alert: New Login Detected"
+
+            html_user = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f3ec;
+            margin: 0;
+            padding: 40px 20px;
+        }}
+        .container {{
+            max-width: 580px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border: 1px solid #e7e5dc;
+            border-radius: 24px;
+            padding: 44px;
+            box-shadow: 0 4px 20px rgba(42, 45, 34, 0.02);
+        }}
+        .header {{
+            text-align: center;
+            margin-bottom: 32px;
+        }}
+        .logo {{
+            font-size: 26px;
+            font-weight: 850;
+            color: #526322;
+            margin: 0 0 8px;
+            letter-spacing: -0.5px;
+        }}
+        .title {{
+            font-size: 20px;
+            font-weight: 800;
+            color: #1c1d1a;
+            margin: 0 0 24px;
+            letter-spacing: -0.4px;
+        }}
+        .text {{
+            font-size: 14.5px;
+            color: #4a4c44;
+            line-height: 1.6;
+            margin: 0 0 20px;
+            font-weight: 500;
+        }}
+        .details-box {{
+            background-color: #faf9f6;
+            border: 1px dashed #dcdad0;
+            border-radius: 16px;
+            padding: 24px;
+            margin: 24px 0;
+        }}
+        .detail-item {{
+            margin-bottom: 14px;
+            font-size: 14px;
+        }}
+        .detail-item:last-child {{
+            margin-bottom: 0;
+        }}
+        .label {{
+            font-weight: 800;
+            color: #7a855a;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: block;
+            margin-bottom: 4px;
+        }}
+        .value {{
+            font-weight: 600;
+            color: #1c1d1a;
+            font-size: 14px;
+        }}
+        .footer {{
+            text-align: center;
+            margin-top: 36px;
+            font-size: 11px;
+            color: #7a7c74;
+            line-height: 1.5;
+            font-weight: 500;
+            border-top: 1px solid #f2f0e8;
+            padding-top: 24px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Figent</div>
+            <h1 class="title">New Sign-In Detected</h1>
+        </div>
+        
+        <p class="text">Hello {username},</p>
+        <p class="text">A new sign-in was successfully processed for your Figent workspace. The session details are as follows:</p>
+        
+        <div class="details-box">
+            <div class="detail-item">
+                <span class="label">ACCOUNT</span>
+                <span class="value">{username}</span>
+            </div>
+
+            <div class="detail-item">
+                <span class="label">TIME</span>
+                <span class="value">{time_str}</span>
+            </div>
+        </div>
+
+        <p class="text">If this sign-in was you, no action is required. If you did not log in, please reset your password immediately to secure your account.</p>
+        
+        <div class="footer">
+            This is an automated security notification from Figent.<br>
+            &copy; 2026 Figent. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>
+"""
+            msg_user.attach(MIMEText(html_user, 'html'))
+            server = smtplib.SMTP(smtp_host, int(smtp_port or 587))
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, [email], msg_user.as_string())
+            server.quit()
+            logger.info(f"Login notification email sent to user {username} ({email})")
+        except Exception as e:
+            logger.error(f"Failed to send login notification to user {username}: {e}")
+
+    # 2. Send notification to the Admin
+    try:
+        msg_admin = MIMEMultipart('alternative')
+        msg_admin['From'] = f'"Figent Server" <{smtp_from}>'
+        msg_admin['To'] = admin_recipient
+        msg_admin['Subject'] = f"[Figent Admin] User Sign-In Notification: {username}"
+
+        html_admin = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f3ec;
+            margin: 0;
+            padding: 40px 20px;
+        }}
+        .container {{
+            max-width: 580px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border: 1px solid #e7e5dc;
+            border-radius: 24px;
+            padding: 44px;
+            box-shadow: 0 4px 20px rgba(42, 45, 34, 0.02);
+        }}
+        .header {{
+            text-align: center;
+            margin-bottom: 32px;
+        }}
+        .logo {{
+            font-size: 26px;
+            font-weight: 850;
+            color: #526322;
+            margin: 0 0 8px;
+            letter-spacing: -0.5px;
+        }}
+        .title {{
+            font-size: 20px;
+            font-weight: 800;
+            color: #1c1d1a;
+            margin: 0 0 24px;
+            letter-spacing: -0.4px;
+        }}
+        .text {{
+            font-size: 14.5px;
+            color: #4a4c44;
+            line-height: 1.6;
+            margin: 0 0 20px;
+            font-weight: 500;
+        }}
+        .details-box {{
+            background-color: #faf9f6;
+            border: 1px dashed #dcdad0;
+            border-radius: 16px;
+            padding: 24px;
+            margin: 24px 0;
+        }}
+        .detail-item {{
+            margin-bottom: 14px;
+            font-size: 14px;
+        }}
+        .detail-item:last-child {{
+            margin-bottom: 0;
+        }}
+        .label {{
+            font-weight: 800;
+            color: #7a855a;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: block;
+            margin-bottom: 4px;
+        }}
+        .value {{
+            font-weight: 600;
+            color: #1c1d1a;
+            font-size: 14px;
+        }}
+        .footer {{
+            text-align: center;
+            margin-top: 36px;
+            font-size: 11px;
+            color: #7a7c74;
+            line-height: 1.5;
+            font-weight: 500;
+            border-top: 1px solid #f2f0e8;
+            padding-top: 24px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Figent</div>
+            <h1 class="title">User Sign-In Alert</h1>
+        </div>
+        
+        <p class="text">Hello Admin,</p>
+        <p class="text">A user has signed in to the Figent application. The sign-in details are as follows:</p>
+        
+        <div class="details-box">
+            <div class="detail-item">
+                <span class="label">USERNAME</span>
+                <span class="value">{username}</span>
+            </div>
+            <div class="detail-item">
+                <span class="label">EMAIL</span>
+                <span class="value">{email or "No Email"}</span>
+            </div>
+
+            <div class="detail-item">
+                <span class="label">TIMESTAMP</span>
+                <span class="value">{time_str}</span>
+            </div>
+        </div>
+        
+        <div class="footer">
+            Automated system report from Figent Admin Console.<br>
+            &copy; 2026 Figent. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>
+"""
+        msg_admin.attach(MIMEText(html_admin, 'html'))
+        server = smtplib.SMTP(smtp_host, int(smtp_port or 587))
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(smtp_from, [admin_recipient], msg_admin.as_string())
+        server.quit()
+        logger.info(f"Login notification email sent to admin for user {username}")
+    except Exception as e:
+        logger.error(f"Failed to send login notification to admin for user {username}: {e}")
+
+    return True
+
+
+def send_audit_completed_email(username: str, email: str, review_id: int, repo_url: str, total_findings: int):
+    """Send a beautiful, Figent-themed email notification when a repository code review audit finishes"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import logging
+    logger = logging.getLogger("uvicorn.error")
+
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = os.getenv("SMTP_PORT")
+    smtp_user = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+    smtp_from = os.getenv("SMTP_FROM") or smtp_user
+    
+    frontend_url = os.getenv("FRONTEND_URL") or "http://localhost:5173"
+    findings_url = f"{frontend_url.rstrip('/')}/review/{review_id}"
+
+    if not smtp_host or not smtp_user or not smtp_pass:
+        logger.info(f"\n[EMAIL SIMULATION] Audit Completed Alert for {username} ({email}) - Review #{review_id} for {repo_url}. Findings: {total_findings}. URL: {findings_url}\n")
+        return True
+
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['From'] = f'"Figent Code Review" <{smtp_from}>'
+        msg['To'] = email
+        msg['Subject'] = f"[Figent] Code Review Complete: {repo_url.split('/')[-1]}"
+
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f3ec;
+            margin: 0;
+            padding: 40px 20px;
+        }}
+        .container {{
+            max-width: 580px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border: 1px solid #e7e5dc;
+            border-radius: 24px;
+            padding: 44px;
+            box-shadow: 0 4px 20px rgba(42, 45, 34, 0.02);
+        }}
+        .header {{
+            text-align: center;
+            margin-bottom: 32px;
+        }}
+        .logo {{
+            font-size: 26px;
+            font-weight: 800;
+            color: #3b422e;
+            letter-spacing: -1px;
+            margin-bottom: 12px;
+        }}
+        .title {{
+            font-size: 20px;
+            font-weight: 800;
+            color: #3b422e;
+            margin: 0;
+            letter-spacing: -0.5px;
+        }}
+        .text {{
+            font-size: 14.5px;
+            line-height: 1.65;
+            color: #55524a;
+            margin: 16px 0;
+            font-weight: 500;
+        }}
+        .details-box {{
+            background-color: #faf9f5;
+            border: 1px solid #edebe4;
+            border-radius: 16px;
+            padding: 24px;
+            margin: 28px 0;
+        }}
+        .detail-item {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f2f0e8;
+        }}
+        .detail-item:last-child {{
+            border-bottom: none;
+            padding-bottom: 0;
+        }}
+        .detail-item:first-child {{
+            padding-top: 0;
+        }}
+        .label {{
+            font-size: 10px;
+            font-weight: 800;
+            color: #8f8b80;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }}
+        .value {{
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #3b422e;
+            max-width: 280px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+        .btn {{
+            display: block;
+            text-align: center;
+            background-color: #60684f;
+            color: #f7f9eb !important;
+            text-decoration: none;
+            font-weight: 800;
+            font-size: 14px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            margin: 32px 0 16px;
+            transition: background-color 0.15s;
+        }}
+        .footer {{
+            text-align: center;
+            font-size: 11px;
+            color: #a3a095;
+            margin-top: 40px;
+            line-height: 1.5;
+            font-weight: 500;
+            border-top: 1px solid #f2f0e8;
+            padding-top: 24px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Figent</div>
+            <h1 class="title">Review Audit Complete</h1>
+        </div>
+        
+        <p class="text">Hello {username},</p>
+        <p class="text">Great news! The autonomous agent review pipeline has finished analyzing your repository code. Here is a summary of the analysis report:</p>
+        
+        <div class="details-box">
+            <div class="detail-item">
+                <span class="label">REPOSITORY</span>
+                <span class="value">{repo_url.split('/')[-1]}</span>
+            </div>
+            <div class="detail-item">
+                <span class="label">TOTAL FINDINGS</span>
+                <span class="value" style="color: #b91c1c;">{total_findings} issues detected</span>
+            </div>
+            <div class="detail-item">
+                <span class="label">STATUS</span>
+                <span class="value" style="color: #60684f;">Complete</span>
+            </div>
+        </div>
+
+        <a href="{findings_url}" class="btn" target="_blank">View Findings Dashboard</a>
+
+        <p class="text">You can explore individual issues, review suggested remediations (with auto-fix patches), and consult our context-aware AI assistant directly inside the dashboard workspace.</p>
+        
+        <div class="footer">
+            Automated notifications from your Figent dashboard.<br>
+            &copy; 2026 Figent. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>
+"""
+        msg.attach(MIMEText(html_content, 'html'))
+        server = smtplib.SMTP(smtp_host, int(smtp_port or 587))
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(smtp_from, [email], msg.as_string())
+        server.quit()
+        logger.info(f"Audit complete email notification sent to {email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send audit complete email notification to {email}: {str(e)}")
         return False
 
 

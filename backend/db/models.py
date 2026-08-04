@@ -42,6 +42,7 @@ class Review(Base):
     error = Column(Text, nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     ip_address = Column(String, nullable=True)
+    report_mode = Column(Boolean, default=False, nullable=True)
 
     owner = relationship("User", back_populates="reviews")
     findings = relationship("Finding", back_populates="review")

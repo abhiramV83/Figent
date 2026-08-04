@@ -74,7 +74,8 @@ export default function Login({ onLogin }) {
             <div style={{ 
               background: '#fdf0ee', border: '1px solid #e8c4bc', 
               borderRadius: '10px', color: '#7a2d1e', fontSize: '13px', 
-              fontWeight: 700, padding: '12px 16px', marginBottom: '20px' 
+              fontWeight: 700, padding: '12px 16px', marginBottom: '20px',
+              wordBreak: 'break-word', lineHeight: 1.45
             }}>
               {error}
             </div>
@@ -139,7 +140,7 @@ export default function Login({ onLogin }) {
               onMouseEnter={e => { if (!loading) e.currentTarget.style.backgroundColor = sand[200] }}
               onMouseLeave={e => { if (!loading) e.currentTarget.style.backgroundColor = sand[100] }}
             >
-              {loading ? 'Initializing...' : 'Continue as Guest (Free)'}
+              {loading ? 'Initializing...' : 'Continue as Guest'}
             </button>
           </div>
         </div>

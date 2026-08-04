@@ -8,6 +8,11 @@ def pr_agent_node(state: ReviewState) -> ReviewState:
         print("Skipping GitHub actions — pipeline has errors")
         return state
 
+    if state.get("report_mode"):
+        print("Skipping GitHub mutations — running in report-only mode")
+        state["pr_urls"] = []
+        return state
+
     all_findings = state.get("all_findings", [])
     if not all_findings:
         print("No findings to act on")
