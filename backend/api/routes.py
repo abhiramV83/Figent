@@ -475,9 +475,8 @@ async def start_review(request: Request, review_req: ReviewRequest, db: Session 
 
     client_ip = get_client_ip(request)
     
-    # Check if the user is a guest user (skip if local loopback IP for testing/local convenience)
-    if user.username.startswith("guest_") and client_ip not in ("127.0.0.1", "::1", "localhost"):
-        existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
+    if user.username.startswith("guest_"):
+        existing_reviews_count = db.query(Review).filter(Review.owner_id == user.id).count()
         if existing_reviews_count >= 1:
             raise HTTPException(
                 status_code=429,
@@ -864,8 +863,8 @@ async def review_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
         else:
             client_ip = websocket.client.host if websocket.client else "127.0.0.1"
 
-        if user.username.startswith("guest_") and client_ip not in ("127.0.0.1", "::1", "localhost"):
-            existing_reviews_count = db.query(Review).filter(Review.ip_address == client_ip).count()
+        if user.username.startswith("guest_"):
+            existing_reviews_count = db.query(Review).filter(Review.owner_id == user.id).count()
             if existing_reviews_count >= 1:
                 await websocket.send_json({
                     "type": "error",
