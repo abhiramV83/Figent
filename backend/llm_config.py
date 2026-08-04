@@ -8,8 +8,9 @@ def get_llm():
     from pathlib import Path
     _env_path = Path(__file__).resolve().parent.parent / ".env"
     load_dotenv(dotenv_path=str(_env_path), override=True)
+    model_name = os.getenv("GROQ_MODEL") or "llama-3.1-70b-versatile"
     return ChatGroq(
-        model="openai/gpt-oss-120b",
+        model=model_name,
         api_key=os.getenv("GROQ_API_KEY"),
         temperature=0.1 
     )
