@@ -743,7 +743,7 @@ async def run_review_pipeline_background(review_id: int, repo_url: str, branch: 
                 })
                 task_manager.publish_event(review_id, {
                     "type": "keepalive",
-                    "message": "Opening GitHub PRs and Issues — this may take a minute..."
+                    "message": "Finalizing review report..." if report_mode else "Opening GitHub PRs and Issues — this may take a minute..."
                 })
 
             elif node_name == "pr_agent":
@@ -751,7 +751,7 @@ async def run_review_pipeline_background(review_id: int, repo_url: str, branch: 
                 task_manager.publish_event(review_id, {
                     "type": "agent_complete",
                     "agent": "pr_agent",
-                    "message": "GitHub actions done",
+                    "message": "Review report generated successfully" if report_mode else "GitHub actions done",
                     "pr_urls": pr_urls
                 })
 

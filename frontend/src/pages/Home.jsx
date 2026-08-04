@@ -148,6 +148,7 @@ export default function Home({ token, username, onAuthError }) {
 
   // Fetch branches when valid repo URL is entered
   useEffect(() => {
+    let active = true
     if (!token) return
     const url = repoUrl.trim()
     if (!validateGithubUrl(url)) {
@@ -164,6 +165,7 @@ export default function Home({ token, username, onAuthError }) {
       headers: { Authorization: `Bearer ${token}` }
     })
     .then(res => {
+      if (!active) return
       setErrorMessage('')
       const branchNames = res.data.branches || []
       setBranches(branchNames)
@@ -179,15 +181,21 @@ export default function Home({ token, username, onAuthError }) {
       setDefaultBranch(defaultBranchName)
     })
     .catch(err => {
+      if (!active) return
       setLoadingBranches(false)
       setBranches([])
       const msg = err.response?.data?.detail || 'Failed to fetch repository branches. Please verify it is a valid, public GitHub repository.'
       setErrorMessage(msg)
     })
+
+    return () => {
+      active = false
+    }
   }, [repoUrl, token])
 
   // Fetch files when repo URL or branch changes
   useEffect(() => {
+    let active = true
     if (!token) return
     const url = repoUrl.trim()
     if (!validateGithubUrl(url) || !selectedBranch) {
@@ -202,6 +210,7 @@ export default function Home({ token, username, onAuthError }) {
       headers: { Authorization: `Bearer ${token}` }
     })
     .then(async (res) => {
+      if (!active) return
       setErrorMessage('')
       const files = res.data.files || []
       setFilesList(files)
@@ -214,6 +223,7 @@ export default function Home({ token, username, onAuthError }) {
           const compareRes = await axios.get(`${API_BASE}/api/repo/compare?repo_url=${encodeURIComponent(url)}&branch=${encodeURIComponent(selectedBranch)}`, {
             headers: { Authorization: `Bearer ${token}` }
           })
+          if (!active) return
           const modified = compareRes.data.modified_files || []
           // Normalize paths for matching
           const normalizedModified = modified.map(p => p.replace(/\\/g, '/').toLowerCase())
@@ -238,6 +248,7 @@ export default function Home({ token, username, onAuthError }) {
             setCheckedFiles(paths)
           }
         } catch (err) {
+          if (!active) return
           console.error("Failed to fetch branch comparison, falling back to default pre-selection", err)
           const paths = files
             .filter(f => (f.size_bytes || 0) / 1024 <= 100)
@@ -245,7 +256,7 @@ export default function Home({ token, username, onAuthError }) {
             .map(f => f.path)
           setCheckedFiles(paths)
         } finally {
-          setLoadingDiff(false)
+          if (active) setLoadingDiff(false)
         }
       } else {
         // For default branch, pre-select first 5 small files
@@ -257,12 +268,17 @@ export default function Home({ token, username, onAuthError }) {
       }
     })
     .catch(err => {
+      if (!active) return
       setLoadingFiles(false)
       setFilesList([])
       setCheckedFiles([])
       const msg = err.response?.data?.detail || 'Failed to read repository files. Please verify the branch exists.'
       setErrorMessage(msg)
     })
+
+    return () => {
+      active = false
+    }
   }, [repoUrl, selectedBranch, defaultBranch, token])
 
   const handleGithubRedirect = () => {
